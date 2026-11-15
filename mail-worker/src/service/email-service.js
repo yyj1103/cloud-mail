@@ -573,7 +573,7 @@ const emailService = {
 		} else {
 			deliveries = this.sendBrevo(c, context);
 		}
-	
+
 		const emailResults = [];
 		let sendError = '';
 
