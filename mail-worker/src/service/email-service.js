@@ -574,7 +574,6 @@ const emailService = {
 			deliveries = this.sendBrevo(c, context);
 		}
 	
-
 		const emailResults = [];
 		let sendError = '';
 
