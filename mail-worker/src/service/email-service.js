@@ -500,6 +500,14 @@ const emailService = {
 		if (!useCloudflareEmail && !resendToken && !brevoApiKey && !allInternal) {
 			throw new BizError(t('noSendProvider'));
 		}
+		//每日发信上限 300 封（Brevo 免费版额度），站内邮件不计
+		if (!allInternal) {
+			const dateStr = dayjs().format('YYYY-MM-DD');
+			const daySendTotal = Number(await c.env.kv.get(kvConst.SEND_DAY_COUNT + dateStr) || 0);
+			if (daySendTotal + quotaCount > 300) {
+				throw new BizError(t('daySendLimit'), 403);
+			}
+		}
 
 		//没有发件人名字自动截取
 		if (!name) {
