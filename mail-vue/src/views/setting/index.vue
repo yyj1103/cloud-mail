@@ -69,6 +69,22 @@
         <el-button type="primary" @click="deleteConfirm">{{$t('deleteUserBtn')}}</el-button>
       </div>
     </div>
+    <div class="preference-item">
+      <div class="title">个人博客</div>
+      <div class="language-row setting-row">
+        <div>博客</div>
+        <div>
+          <el-link type="primary" href="https://c3ksoaoc-wordpress-site-yyj1103.apps-2.websson.cloud" target="_blank">七玄仙尊</el-link>
+        </div>
+      </div>
+    </div>
+    <div class="preference-item">
+      <div class="title">联系方式</div>
+      <div class="language-row setting-row">
+        <div>QQ</div>
+        <div>2384726093</div>
+      </div>
+    </div>
     <el-dialog v-model="pwdShow" :title="$t('changePassword')" width="340">
       <div class="update-pwd">
         <el-input type="password" :placeholder="$t('newPassword')" v-model="form.password" autocomplete="off" @keyup.enter="submitPwd"/>
