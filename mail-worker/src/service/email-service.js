@@ -493,10 +493,11 @@ const emailService = {
 
 		const domain = emailUtils.getDomain(accountRow.email);
 		const resendToken = resendTokens[domain];
+		const brevoApiKey = c.env.brevoApiKey;
 		const useCloudflareEmail = !!c.env.email;
 
 		//如果接收方存在站外邮箱，又没有发信服务
-		if (!useCloudflareEmail && !resendToken && !allInternal) {
+		if (!useCloudflareEmail && !resendToken && !brevoApiKey && !allInternal) {
 			throw new BizError(t('noSendProvider'));
 		}
 
@@ -550,7 +551,7 @@ const emailService = {
 
 		// sendParams 用于渠道请求，saveParams 保留保存记录所需的账号、权限和附件数据。
 		const context = {
-			separate, allInternal, useCloudflareEmail, resendToken, sendParams,
+			separate, allInternal, useCloudflareEmail, resendToken, brevoApiKey, sendParams,
 			saveParams: {
 				accountId, userId, name, subject, text, html,
 				sendEmail: accountRow.email,
@@ -561,15 +562,18 @@ const emailService = {
 			}
 		};
 
-		// 全部站内收件人走本地投递；存在站外收件人时优先 CF，其次 Resend。
+		// 全部站内收件人走本地投递；存在站外收件人时优先 CF，其次 Resend，最后 Brevo。
 		let deliveries;
 		if (allInternal) {
 			deliveries = this.sendInternal(c, context);
 		} else if (useCloudflareEmail) {
 			deliveries = this.sendCloudflare(c, context);
-		} else {
+		} else if (resendToken) {
 			deliveries = this.sendResend(c, context);
+		} else {
+			deliveries = this.sendBrevo(c, context);
 		}
+	
 
 		const emailResults = [];
 		let sendError = '';
@@ -674,7 +678,99 @@ const emailService = {
 		yield { emails };
 	},
 
-	// 三个渠道共用的发件记录保存：恢复正文图片 URL、保存附件并更新发送计数。
+		// Brevo 分开发送逐人调用单封接口，普通发送一次提交所有收件人。
+	async *sendBrevo(c, { separate, brevoApiKey, sendParams, saveParams }) {
+		const recipientGroups = separate
+			? sendParams.receiveEmail.map(address => [address])
+			: [sendParams.receiveEmail];
+	for (const receiveEmail of recipientGroups) {
+			let result;
+			try {
+				result = await this.sendByBrevo(brevoApiKey, { ...sendParams, receiveEmail });
+			} catch (error) {
+				if (!separate) throw error;
+				yield { error: { message: error.message } };
+				return;
+			}
+			const emailResult = await this.saveSentEmail(c, {
+				...saveParams, receiveEmail, providerId: result.messageId
+			});
+			yield { emails: [emailResult] };
+		}
+	},
+
+	async sendByBrevo(brevoApiKey, params) {
+		const sendForm = {
+			sender: { name: params.name, email: params.accountEmail },
+			to: params.receiveEmail.map(address => ({ email: address })),
+			subject: params.subject
+		};
+
+		if (params.text) {
+			sendForm.textContent = params.text;
+		}
+
+		if (params.html) {
+			sendForm.htmlContent = params.html;
+		}
+
+		const attachments = await this.toBrevoAttachments(params.attachments);
+		if (attachments.length > 0) {
+			sendForm.attachment = attachments;
+		}
+
+		if (params.ccEmail.length > 0) {
+			sendForm.cc = params.ccEmail.map(address => ({ email: address }));
+		}
+
+		if (params.bccEmail.length > 0) {
+			sendForm.bcc = params.bccEmail.map(address => ({ email: address }));
+		}
+
+		if (params.sendType === 'reply' && params.messageId) {
+			sendForm.headers = {
+				'in-reply-to': params.messageId,
+				'references': params.messageId
+			};
+		}
+
+		const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+			method: 'POST',
+			headers: {
+				'accept': 'application/json',
+				'api-key': brevoApiKey,
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify(sendForm)
+		});
+
+		const result = await response.json().catch(() => ({}));
+		if (!response.ok) {
+			throw new Error(result.message || `Brevo send failed: ${response.status}`);
+		}
+
+		return { messageId: result.messageId };
+	},
+
+	async toBrevoAttachments(attachments = []) {
+		const result = [];
+
+		for (const attachment of attachments) {
+			const content = await this.toAttachmentBase64(attachment);
+			if (!content) {
+				continue;
+			}
+
+			result.push({
+				content,
+				name: attachment.filename || attachment.name || 'attachment'
+			});
+		}
+
+		return result;
+	},
+
+	// 四个渠道共用的发件记录保存：恢复正文图片 URL、保存附件并更新发送计数。
 	async saveSentEmail(c, params) {
 		const {
 			accountId, userId, name, subject, text, html, sendEmail, receiveEmail,
