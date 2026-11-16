@@ -15,6 +15,7 @@
             <Header />
         </el-header>
         <Main />
+        <div class="site-footer">作者博客：<a href="https://blog.qixuan.ccwu.cc" target="_blank">blog.qixuan.ccwu.cc</a><span class="footer-sep">·</span>合作联络 QQ：2384726093</div>
       </el-main>
     </el-container>
   </el-container>
@@ -124,5 +125,23 @@ onBeforeUnmount(() => {
   display: flex;
   pointer-events: none;
   opacity: 0;
+}
+
+  .site-footer {
+  text-align: center;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  padding: 12px 16px;
+  border-top: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+}
+
+  .site-footer a {
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+  .footer-sep {
+  margin: 0 8px;
 }
 </style>
