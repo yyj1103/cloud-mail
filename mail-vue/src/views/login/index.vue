@@ -152,6 +152,10 @@
     <a v-show="settingStore.settings.projectLink" class="github" href="https://github.com/maillab/cloud-mail">
       <Icon icon="mingcute:github-line" color="#1890ff" width="20" height="20" />
     </a>
+    <div class="site-footer">
+      <div>七玄仙尊 © 2026. All Rights Reserved.</div>
+      <div>作者博客：<a href="https://blog.qixuan.ccwu.cc" target="_blank">blog.qixuan.ccwu.cc</a><span class="footer-sep">·</span>【合作联络】QQ：2384726093</div>
+    </div>
   </div>
 </template>
 
@@ -937,6 +941,24 @@ function submitRegister() {
   width: 180px;
   right: 50px;
   top: -90px;
+}
+
+  .site-footer {
+  text-align: center;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  padding: 12px 16px;
+  border-top: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+}
+
+  .site-footer a {
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+  .footer-sep {
+  margin: 0 8px;
 }
 
 </style>
