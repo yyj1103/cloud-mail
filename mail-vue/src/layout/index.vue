@@ -15,7 +15,10 @@
             <Header />
         </el-header>
         <Main />
-        <div class="site-footer">作者博客：<a href="https://blog.qixuan.ccwu.cc" target="_blank">blog.qixuan.ccwu.cc</a><span class="footer-sep">·</span>合作联络 QQ：2384726093</div>
+        <div class="site-footer">
+                    <div>七玄仙尊 © 2026. All Rights Reserved.</div>
+                    <div>作者博客：<a href="https://blog.qixuan.ccwu.cc" target="_blank">blog.qixuan.ccwu.cc</a><span class="footer-sep">·</span>【合作联络】QQ：2384726093</div>
+        </div>
       </el-main>
     </el-container>
   </el-container>
