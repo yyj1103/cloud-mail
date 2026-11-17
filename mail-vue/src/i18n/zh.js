@@ -5,7 +5,7 @@ const zh = {
     sent: '已发送',
     starred: '星标邮件',
     dm: '私信',
-    dmSearchPlaceholder: '输入对方邮箱地址添加好友',
+    dmSearchPlaceholder: '输入对方用户名添加好友',
     dmAddFriend: '添加好友',
     dmRequestSent: '已发送请求',
     dmAccept: '接受',

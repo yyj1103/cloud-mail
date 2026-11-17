@@ -5,7 +5,7 @@ const en = {
     sent: 'Sent',
     starred: 'Starred',
     dm: 'Messages',
-    dmSearchPlaceholder: 'Enter an email address to add a friend',
+    dmSearchPlaceholder: 'Enter a username to add a friend',
     dmAddFriend: 'Add friend',
     dmRequestSent: 'Request sent',
     dmAccept: 'Accept',

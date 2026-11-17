@@ -7,7 +7,9 @@
             :placeholder="$t('dmSearchPlaceholder')"
             @keyup.enter="doSearch"
             clearable
-        />
+        >
+          <template v-if="!searchEmail.includes('@')" #append>@{{ mailDomain }}</template>
+        </el-input>
         <el-button type="primary" :loading="searchLoading" @click="doSearch">{{ $t('search') }}</el-button>
       </div>
       <div v-if="searchResult" class="search-result">
@@ -186,6 +188,14 @@ const msgPage = ref(1)
 const hasMore = ref(false)
 const mobileChat = ref(false)
 const isMobile = computed(() => window.innerWidth < 768)
+const mailDomain = computed(() => userStore.user.email?.split('@')[1] || 'qixuan.ccwu.cc')
+
+function normalizeEmail(input) {
+  const value = input.trim()
+  if (!value) return ''
+  if (value.includes('@')) return value
+  return value + '@' + mailDomain.value
+}
 
 function formatName(text) {
   return (text || '')[0]?.toUpperCase() || ''
@@ -236,7 +246,7 @@ async function refreshAll() {
 }
 
 async function doSearch() {
-  const email = searchEmail.value.trim()
+  const email = normalizeEmail(searchEmail.value)
   if (!email) return
   searchLoading.value = true
   searchResult.value = null
