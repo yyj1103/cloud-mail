@@ -34,12 +34,39 @@ const dbInit = {
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
+		await this.v3_6DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
 
 	async v3_5DB(c) {
 		await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_user_create_time ON email(user_id, create_time)`).run();
+	},
+
+	async v3_6DB(c) {
+		await c.env.db.batch([
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS friend (
+				friend_id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				friend_user_id INTEGER NOT NULL,
+				status INTEGER DEFAULT 0 NOT NULL,
+				create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+				update_time DATETIME
+			)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_friend_user ON friend(user_id, status)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_friend_friend_user ON friend(friend_user_id, status)`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS private_message (
+				message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+				sender_user_id INTEGER NOT NULL,
+				receiver_user_id INTEGER NOT NULL,
+				content TEXT NOT NULL,
+				is_read INTEGER DEFAULT 0 NOT NULL,
+				create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+				is_del INTEGER DEFAULT 0 NOT NULL
+			)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_pm_sender_receiver ON private_message(sender_user_id, receiver_user_id, create_time)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_pm_receiver_read ON private_message(receiver_user_id, is_read, create_time)`)
+		]);
 	},
 
 	async v3_4DB(c) {

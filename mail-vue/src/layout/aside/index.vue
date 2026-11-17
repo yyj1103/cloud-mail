@@ -30,6 +30,12 @@
           <Icon icon="solar:star-line-duotone" width="20" height="20" />
           <span class="menu-name" style="margin-left: 16px">{{$t('starred')}}</span>
         </el-menu-item>
+        <el-menu-item @click="router.push({name: 'dm'})" index="dm"
+                      :class="route.meta.name === 'dm' ? 'choose-item' : ''">
+          <Icon icon="solar:chat-line-bold" width="20" height="20" />
+          <span class="menu-name" style="margin-left: 16px">{{$t('dm')}}</span>
+          <el-badge v-if="dmStore.unread > 0" :value="dmStore.unread" :max="99" class="dm-badge" />
+        </el-menu-item>
         <el-menu-item @click="router.push({name: 'setting'})" index="setting"
                       :class="route.meta.name === 'setting' ? 'choose-item' : ''">
           <Icon icon="fluent:settings-48-regular" width="20" height="20" />
@@ -75,14 +81,16 @@
 
 <script setup>
 import router from "@/router/index.js";
-import {computed} from "vue";
+import {computed, onMounted, onUnmounted} from "vue";
 import { useRoute } from "vue-router";
 import {Icon} from "@iconify/vue";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
+import {useDmStore} from "@/store/dm.js";
 
 const settingStore = useSettingStore();
 const uiStore = useUiStore();
+const dmStore = useDmStore();
 const route = useRoute();
 const logoUrl = `${import.meta.env.BASE_URL}mail.png`
 const titleUsesDisplayFont = computed(() => !/\p{Script=Han}/u.test(settingStore.settings.title || ''))
@@ -90,6 +98,24 @@ const titleUsesDisplayFont = computed(() => !/\p{Script=Han}/u.test(settingStore
 function openCompose() {
   uiStore.writerRef.open()
 }
+
+let dmPollTimer = null
+
+onMounted(() => {
+  dmStore.refreshUnread()
+  dmPollTimer = setInterval(() => {
+    if (!document.hidden) {
+      dmStore.refreshUnread()
+    }
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (dmPollTimer) {
+    clearInterval(dmPollTimer)
+    dmPollTimer = null
+  }
+})
 
 </script>
 
@@ -203,6 +229,10 @@ function openCompose() {
 
 .menu-name {
   user-select: none;
+}
+
+.dm-badge {
+  margin-left: auto;
 }
 
 

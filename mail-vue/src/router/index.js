@@ -51,6 +51,16 @@ const routes = [
                     menu: true
                 }
             },
+            {
+                path: '/dm',
+                name: 'dm',
+                component: () => import('@/views/dm/index.vue'),
+                meta: {
+                    title: 'dm',
+                    name: 'dm',
+                    menu: true
+                }
+            },
         ]
 
     },
