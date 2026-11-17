@@ -82,32 +82,31 @@
           <div class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
           <div class="chat-title">
             <div class="chat-name">{{ currentFriend.name }}</div>
-            <div class="chat-email">{{ currentFriend.email }}</div>
           </div>
-          <el-button type="danger" plain size="small" @click="doRemoveFriend">{{ $t('dmRemoveFriend') }}</el-button>
+          <el-dropdown trigger="click">
+            <el-button link class="more-btn">···</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="doRemoveFriend">{{ $t('dmRemoveFriend') }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
         <el-scrollbar ref="msgScrollRef" class="message-list">
           <div v-if="hasMore" class="load-more">
             <el-button link @click="loadMore">{{ $t('dmLoadMore') }}</el-button>
           </div>
-          <div
-              v-for="msg in messages"
-              :key="msg.messageId"
-              class="message-row"
-              :class="{ mine: msg.senderUserId === userStore.user.userId }"
-          >
-            <div class="message-bubble">
-              <div class="message-content">{{ msg.content }}</div>
-              <div class="message-time">{{ formatTime(msg.createTime) }}</div>
+          <template v-for="(msg, index) in messages" :key="msg.messageId">
+            <div v-if="showTimeLabel(index)" class="time-label">{{ formatTime(msg.createTime) }}</div>
+            <div
+                class="message-row"
+                :class="{ mine: msg.senderUserId === userStore.user.userId }"
+            >
+              <div class="message-bubble" @contextmenu.prevent="askDeleteMessage(msg)">
+                <div class="message-content">{{ msg.content }}</div>
+              </div>
             </div>
-            <el-button
-                v-if="msg.senderUserId === userStore.user.userId"
-                class="msg-del"
-                link
-                size="small"
-                @click="doDeleteMessage(msg.messageId)"
-            >{{ $t('delete') }}</el-button>
-          </div>
+          </template>
         </el-scrollbar>
         <div class="chat-input">
           <el-input
@@ -116,7 +115,6 @@
               :rows="2"
               :placeholder="$t('dmTypeMessage')"
               :maxlength="2000"
-              show-word-limit
               @keydown.enter.exact.prevent="doSend"
           />
           <el-button type="primary" :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">{{ $t('send') }}</el-button>
@@ -173,6 +171,25 @@ function formatTime(time) {
   if (!time) return ''
   const d = tzDayjs(time)
   return d.isSame(tzDayjs(), 'day') ? d.format('HH:mm') : d.format('MM-DD HH:mm')
+}
+
+function showTimeLabel(index) {
+  if (index === 0) return true
+  const prev = tzDayjs(messages.value[index - 1].createTime)
+  const cur = tzDayjs(messages.value[index].createTime)
+  return cur.diff(prev, 'minute') > 5
+}
+
+function askDeleteMessage(msg) {
+  if (msg.senderUserId !== userStore.user.userId) return
+  ElMessageBox.confirm(t('dmDeleteMessageConfirm'), {
+    confirmButtonText: t('confirm'),
+    cancelButtonText: t('cancel'),
+    type: 'warning'
+  }).then(async () => {
+    await deleteMessage(msg.messageId)
+    messages.value = messages.value.filter(m => m.messageId !== msg.messageId)
+  })
 }
 
 function scrollToBottom() {
@@ -289,11 +306,6 @@ async function doSend() {
   } finally {
     sendLoading.value = false
   }
-}
-
-async function doDeleteMessage(messageId) {
-  await deleteMessage(messageId)
-  messages.value = messages.value.filter(m => m.messageId !== messageId)
 }
 
 let pollTimer = null
@@ -487,9 +499,10 @@ defineOptions({
   font-weight: bold;
 }
 
-.chat-email {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+.more-btn {
+  font-size: 20px;
+  letter-spacing: 2px;
+  padding: 0 4px;
 }
 
 .message-list {
@@ -518,33 +531,27 @@ defineOptions({
   max-width: 70%;
   padding: 8px 12px;
   border-radius: 10px;
-  background: var(--el-fill-color-light);
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
 }
 
 .message-row.mine .message-bubble {
-  background: var(--el-color-primary-light-8);
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+  color: #fff;
+}
+
+.time-label {
+  text-align: center;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin: 12px 0 8px;
 }
 
 .message-content {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 14px;
-}
-
-.message-time {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-  text-align: right;
-}
-
-.msg-del {
-  flex-shrink: 0;
-  opacity: 0;
-}
-
-.message-row:hover .msg-del {
-  opacity: 1;
 }
 
 .chat-input {

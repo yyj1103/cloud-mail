@@ -20,6 +20,7 @@ const en = {
     dmLoadMore: 'Load more',
     dmTypeMessage: 'Type a message…',
     dmRequestSentMsg: 'Friend request sent',
+    dmDeleteMessageConfirm: 'Delete this message?',
     settings: 'Settings',
     analytics: 'Dashboard',
     allUsers: 'Users',

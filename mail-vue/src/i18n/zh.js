@@ -20,6 +20,7 @@ const zh = {
     dmLoadMore: '加载更多',
     dmTypeMessage: '输入消息…',
     dmRequestSentMsg: '好友请求已发送',
+    dmDeleteMessageConfirm: '确定删除这条消息吗？',
     settings: '个人设置',
     analytics: '分析页',
     allUsers: '用户列表',
