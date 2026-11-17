@@ -8,6 +8,10 @@ export function resetPassword(password) {
     return http.put('/my/resetPassword', {password})
 }
 
+export function setAvatar(avatar) {
+    return http.put('/my/avatar', {avatar})
+}
+
 export function userDelete() {
     return http.delete('/my/delete')
 }

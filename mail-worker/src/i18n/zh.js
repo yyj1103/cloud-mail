@@ -59,6 +59,8 @@ const zh = {
 	emptyMessage: '消息内容不能为空',
 	messageTooLong: '消息不能超过2000字',
 	sendTooFast: '发送太快了，请稍后再试',
+	avatarInvalidType: '头像只能是 JPG、PNG 或 GIF 图片',
+	avatarTooLarge: '头像图片不能超过 2MB',
 	notExist: '身份不存在',
 	emptyRoleName: '身份名不能为空',
 	roleNameExist: '身份名已存在',

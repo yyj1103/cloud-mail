@@ -48,6 +48,7 @@ const dmService = {
 		return {
 			userId: target.userId,
 			email: target.email,
+			avatar: target.avatar || '',
 			name: accountRow?.name || emailUtils.getName(email),
 			relation: rel ? rel.status : -1,
 			isRequester: rel ? rel.userId === userId : false,
@@ -173,6 +174,7 @@ const dmService = {
 
 		return Object.fromEntries(users.map(u => [u.userId, {
 			email: u.email,
+			avatar: u.avatar || '',
 			name: accountMap[u.userId]?.name || emailUtils.getName(u.email)
 		}]));
 	},

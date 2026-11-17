@@ -35,12 +35,21 @@ const dbInit = {
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
 		await this.v3_6DB(c);
+		await this.v3_7DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
 
 	async v3_5DB(c) {
 		await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_user_create_time ON email(user_id, create_time)`).run();
+	},
+
+	async v3_7DB(c) {
+		try {
+			await c.env.db.prepare(`ALTER TABLE user ADD COLUMN avatar TEXT NOT NULL DEFAULT '';`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
 	},
 
 	async v3_6DB(c) {

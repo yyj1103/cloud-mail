@@ -11,7 +11,8 @@
         <el-button type="primary" :loading="searchLoading" @click="doSearch">{{ $t('search') }}</el-button>
       </div>
       <div v-if="searchResult" class="search-result">
-        <div class="letter-avatar">{{ formatName(searchResult.name || searchResult.email) }}</div>
+        <img v-if="searchResult.avatar" class="avatar-img" :src="searchResult.avatar" alt="">
+        <div v-else class="letter-avatar">{{ formatName(searchResult.name || searchResult.email) }}</div>
         <div class="result-info">
           <div class="result-name">{{ searchResult.name }}</div>
           <div class="result-email">{{ searchResult.email }}</div>
@@ -43,7 +44,8 @@
       <div v-if="incomingRequests.length" class="request-section">
         <div class="section-title">{{ $t('dmFriendRequests') }}</div>
         <div v-for="req in incomingRequests" :key="req.friendId" class="request-item">
-          <div class="letter-avatar small">{{ formatName(req.name || req.email) }}</div>
+          <img v-if="req.avatar" class="avatar-img" :src="req.avatar" alt="">
+          <div v-else class="letter-avatar small">{{ formatName(req.name || req.email) }}</div>
           <div class="result-info">
             <div class="result-name">{{ req.name }}</div>
             <div class="result-email">{{ req.email }}</div>
@@ -61,7 +63,8 @@
             :class="{ active: currentFriend && currentFriend.userId === conv.userId }"
             @click="openConversation(conv)"
         >
-          <div class="letter-avatar">{{ formatName(conv.name || conv.email) }}</div>
+          <img v-if="conv.avatar" class="avatar-img" :src="conv.avatar" alt="">
+          <div v-else class="letter-avatar">{{ formatName(conv.name || conv.email) }}</div>
           <div class="conv-info">
             <div class="conv-name">{{ conv.name }}</div>
             <div class="conv-last">{{ conv.lastMessage ? conv.lastMessage.content : conv.email }}</div>
@@ -79,7 +82,8 @@
       <template v-if="currentFriend">
         <div class="chat-header">
           <el-button v-if="isMobile" class="back-btn" link @click="mobileChat = false">&lt; {{ $t('dmFriends') }}</el-button>
-          <div class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
+          <img v-if="currentFriend.avatar" class="avatar-img" :src="currentFriend.avatar" alt="">
+          <div v-else class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
           <div class="chat-title">
             <div class="chat-name">{{ currentFriend.name }}</div>
           </div>
@@ -102,9 +106,13 @@
                 class="message-row"
                 :class="{ mine: msg.senderUserId === userStore.user.userId }"
             >
+              <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar" :src="currentFriend.avatar" alt="">
+              <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
               <div class="message-bubble" @contextmenu.prevent="askDeleteMessage(msg)">
                 <div class="message-content">{{ msg.content }}</div>
               </div>
+              <img v-if="msg.senderUserId === userStore.user.userId && userStore.user.avatar" class="msg-avatar" :src="userStore.user.avatar" alt="">
+              <div v-else-if="msg.senderUserId === userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(userStore.user.email) }}</div>
             </div>
           </template>
         </el-scrollbar>
@@ -472,6 +480,26 @@ defineOptions({
 .letter-avatar.small {
   width: 30px;
   height: 30px;
+  font-size: 14px;
+}
+
+.avatar-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.msg-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.msg-avatar.letter-avatar {
   font-size: 14px;
 }
 

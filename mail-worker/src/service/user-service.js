@@ -41,6 +41,7 @@ const userService = {
 		user.userId = userRow.userId;
 		user.sendCount = userRow.sendCount;
 		user.email = userRow.email;
+		user.avatar = userRow.avatar || '';
 		user.account = account;
 		user.name = account.name;
 		user.permKeys = permKeys;
@@ -55,6 +56,28 @@ const userService = {
 		return user;
 	},
 
+
+	async setAvatar(c, params, userId) {
+		const { avatar } = params || {};
+
+		if (!avatar || typeof avatar !== 'string') {
+			throw new BizError(t('avatarInvalidType'));
+		}
+
+		const match = avatar.match(/^data:image\/(jpeg|png|gif);base64,([A-Za-z0-9+/=]+)$/);
+
+		if (!match) {
+			throw new BizError(t('avatarInvalidType'));
+		}
+
+		const byteLength = Math.floor(match[2].length * 3 / 4);
+
+		if (byteLength > 2 * 1024 * 1024) {
+			throw new BizError(t('avatarTooLarge'));
+		}
+
+		await orm(c).update(user).set({ avatar }).where(eq(user.userId, userId)).run();
+	},
 
 	async resetPassword(c, params, userId) {
 

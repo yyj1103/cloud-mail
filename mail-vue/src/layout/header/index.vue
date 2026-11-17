@@ -47,16 +47,20 @@
         @visible-change="userCardVisible = $event"
       >
         <div class="avatar">
-          <div class="avatar-text">
+          <img v-if="userStore.user.avatar" class="avatar-img" :src="userStore.user.avatar" alt="">
+          <div v-else class="avatar-text">
             <div>{{ formatName(userStore.user.email) }}</div>
           </div>
           <Icon class="setting-icon" icon="mingcute:down-small-fill" width="24" height="24"/>
         </div>
         <template #dropdown>
           <div class="user-details">
-            <div class="details-avatar">
-              {{ formatName(userStore.user.email) }}
+            <div class="details-avatar" :title="$t('avatarChange')" @click="avatarInput.click()">
+              <img v-if="userStore.user.avatar" :src="userStore.user.avatar" alt="">
+              <span v-else>{{ formatName(userStore.user.email) }}</span>
             </div>
+            <el-button link size="small" class="avatar-change-btn" @click="avatarInput.click()">{{ $t('avatarChange') }}</el-button>
+            <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/gif" style="display: none" @change="onAvatarFile">
             <div class="user-name">
               {{ userStore.user.name }}
             </div>
@@ -102,6 +106,7 @@
 import router from "@/router";
 import hanburger from '@/components/hamburger/index.vue'
 import {logout} from "@/request/login.js";
+import {setAvatar} from "@/request/my.js";
 import {Icon} from "@iconify/vue";
 import {useUiStore} from "@/store/ui.js";
 import {useUserStore} from "@/store/user.js";
@@ -125,6 +130,7 @@ const emailStore = useEmailStore()
 const sendStore = useSendStore()
 const logoutLoading = ref(false)
 const userDropdownRef = ref(null)
+const avatarInput = ref(null)
 const userCardVisible = ref(false)
 const outsidePointerEvents = ['mousedown', 'pointerup', 'mouseup', 'click', 'pointercancel']
 let blockOutsideClick = false
@@ -265,6 +271,31 @@ function formatName(email) {
   return email[0]?.toUpperCase() || ''
 }
 
+function onAvatarFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+    ElMessage({ message: t('avatarInvalidType'), type: 'error', plain: true })
+    return
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    ElMessage({ message: t('avatarTooLarge'), type: 'error', plain: true })
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = async () => {
+    try {
+      await setAvatar(reader.result)
+      userStore.user.avatar = reader.result
+      ElMessage({ message: t('avatarUpdated'), type: 'success', plain: true })
+    } catch (e) {
+      // 服务端错误已由请求拦截器提示
+    }
+  }
+  reader.readAsDataURL(file)
+}
+
 function isInsideUserCard(target) {
   const element = target instanceof Element ? target : target?.parentElement
   if (!(element instanceof Element)) return false
@@ -403,6 +434,19 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     border-radius: 10px;
+    cursor: pointer;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .details-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .avatar-change-btn {
+    margin-top: 4px;
   }
 }
 
@@ -506,6 +550,15 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     cursor: pointer;
+
+    .avatar-img {
+      box-sizing: border-box;
+      height: 32px;
+      width: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--dark-border);
+      object-fit: cover;
+    }
 
     .avatar-text {
       box-sizing: border-box;
