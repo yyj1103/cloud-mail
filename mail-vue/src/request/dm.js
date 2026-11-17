@@ -24,8 +24,8 @@ export function removeFriend(friendUserId) {
     return http.delete('/dm/friend', {params: {friendUserId}})
 }
 
-export function sendMessage(receiverUserId, content) {
-    return http.post('/dm/message', {receiverUserId, content})
+export function sendMessage(receiverUserId, content, type = 0) {
+    return http.post('/dm/message', {receiverUserId, content, type})
 }
 
 export function listConversations() {

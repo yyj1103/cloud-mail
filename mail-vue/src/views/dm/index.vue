@@ -67,7 +67,7 @@
           <div v-else class="letter-avatar">{{ formatName(conv.name || conv.email) }}</div>
           <div class="conv-info">
             <div class="conv-name">{{ conv.name }}</div>
-            <div class="conv-last">{{ conv.lastMessage ? conv.lastMessage.content : conv.email }}</div>
+            <div class="conv-last">{{ conv.lastMessage ? (conv.lastMessage.type === 1 ? $t('dmImageMsg') : conv.lastMessage.content) : conv.email }}</div>
           </div>
           <div class="conv-right">
             <span v-if="conv.lastMessage" class="conv-time">{{ formatTime(conv.lastMessage.createTime) }}</span>
@@ -108,7 +108,8 @@
             >
               <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar" :src="currentFriend.avatar" alt="">
               <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
-              <div class="message-bubble" @contextmenu.prevent="askDeleteMessage(msg)">
+              <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="[msg.content]" fit="cover" @contextmenu.prevent="askDeleteMessage(msg)" />
+              <div v-else class="message-bubble" @contextmenu.prevent="askDeleteMessage(msg)">
                 <div class="message-content">{{ msg.content }}</div>
               </div>
               <img v-if="msg.senderUserId === userStore.user.userId && userStore.user.avatar" class="msg-avatar" :src="userStore.user.avatar" alt="">
@@ -117,15 +118,26 @@
           </template>
         </el-scrollbar>
         <div class="chat-input">
-          <el-input
-              v-model="inputContent"
-              type="textarea"
-              :rows="2"
-              :placeholder="$t('dmTypeMessage')"
-              :maxlength="2000"
-              @keydown.enter.exact.prevent="doSend"
-          />
-          <el-button type="primary" :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">{{ $t('send') }}</el-button>
+          <div class="chat-toolbar">
+            <button class="tool-btn" type="button" @click="emojiShow = !emojiShow">😊</button>
+            <button class="tool-btn" type="button" @click="imageInput.click()">🖼</button>
+            <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onImageFile">
+          </div>
+          <div v-show="emojiShow" class="emoji-panel">
+            <span v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{ e }}</span>
+          </div>
+          <div class="input-row">
+            <el-input
+                ref="inputRef"
+                v-model="inputContent"
+                type="textarea"
+                :rows="2"
+                :placeholder="$t('dmTypeMessage')"
+                :maxlength="2000"
+                @keydown.enter.exact.prevent="doSend"
+            />
+            <el-button type="primary" :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">{{ $t('send') }}</el-button>
+          </div>
         </div>
       </template>
       <el-empty v-else :description="$t('dmSelectFriend')" />
@@ -165,6 +177,10 @@ const currentFriend = ref(null)
 const messages = ref([])
 const inputContent = ref('')
 const sendLoading = ref(false)
+const emojiShow = ref(false)
+const inputRef = ref(null)
+const imageInput = ref(null)
+const emojiList = ['😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜', '😎', '🤔', '😴', '😭', '😡', '🥺', '😏', '🙂', '😉', '😅', '😢', '😋', '🤗', '😷', '🤢', '🥳', '😤', '🙄', '😬', '🤐', '😳', '🥰', '😇', '🤩', '😈', '👍', '👎', '👏', '🙏', '👌', '✌️', '🤞', '👋', '💪', '🙌', '👀', '💕', '💔', '💯', '🔥', '✨', '🎉', '🎁', '🌹', '🍓', '🍕', '☕', '⚽', '🎮', '🚗', '✈️', '🌙', '⭐', '💤', '❓', '❗']
 const msgScrollRef = ref(null)
 const msgPage = ref(1)
 const hasMore = ref(false)
@@ -299,6 +315,77 @@ function isNearBottom() {
   const wrap = msgScrollRef.value?.$el?.querySelector('.el-scrollbar__wrap')
   if (!wrap) return true
   return wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 80
+}
+
+function insertEmoji(e) {
+  const ta = inputRef.value?.textarea
+  if (ta) {
+    const start = ta.selectionStart ?? inputContent.value.length
+    const end = ta.selectionEnd ?? inputContent.value.length
+    inputContent.value = inputContent.value.slice(0, start) + e + inputContent.value.slice(end)
+    nextTick(() => {
+      ta.focus()
+      ta.setSelectionRange(start + e.length, start + e.length)
+    })
+  } else {
+    inputContent.value += e
+  }
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const scale = Math.min(1, 1024 / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+async function onImageFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || !currentFriend.value || sendLoading.value) return
+  if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+    ElMessage({ message: t('imageInvalidType'), type: 'error', plain: true })
+    return
+  }
+  sendLoading.value = true
+  try {
+    let dataUrl
+    if (file.type === 'image/gif') {
+      if (file.size > 1024 * 1024) {
+        ElMessage({ message: t('imageTooLarge'), type: 'error', plain: true })
+        return
+      }
+      dataUrl = await readFileAsDataURL(file)
+    } else {
+      dataUrl = await compressImage(file)
+    }
+    await sendMessage(currentFriend.value.userId, dataUrl, 1)
+    msgPage.value = 1
+    await loadMessages(true, true)
+    await refreshAll()
+  } finally {
+    sendLoading.value = false
+  }
 }
 
 async function doSend() {
@@ -546,13 +633,13 @@ defineOptions({
 
 .message-row {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 6px;
   margin-bottom: 10px;
 }
 
 .message-row.mine {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 .message-bubble {
@@ -570,10 +657,55 @@ defineOptions({
 }
 
 .time-label {
+  width: 100%;
   text-align: center;
   font-size: 11px;
   color: var(--el-text-color-secondary);
   margin: 12px 0 8px;
+}
+
+.msg-image {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 10px;
+  cursor: pointer;
+  object-fit: cover;
+}
+
+.chat-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 0 2px 6px;
+}
+
+.tool-btn {
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.emoji-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0 2px 8px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.emoji-panel span {
+  font-size: 22px;
+  line-height: 1.3;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.emoji-panel span:hover {
+  background: var(--el-fill-color-light);
 }
 
 .message-content {
@@ -584,10 +716,15 @@ defineOptions({
 
 .chat-input {
   display: flex;
+  flex-direction: column;
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--el-border-color-light);
+}
+
+.input-row {
+  display: flex;
   gap: 10px;
   align-items: flex-end;
-  padding: 12px 16px;
-  border-top: 1px solid var(--el-border-color-light);
 }
 
 .back-btn {

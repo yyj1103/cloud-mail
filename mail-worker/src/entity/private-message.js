@@ -6,6 +6,7 @@ export const privateMessage = sqliteTable('private_message', {
 	senderUserId: integer('sender_user_id').notNull(),
 	receiverUserId: integer('receiver_user_id').notNull(),
 	content: text('content').notNull(),
+	type: integer('type').default(0).notNull(),
 	isRead: integer('is_read').default(0).notNull(),
 	createTime: text('create_time').notNull().default(sql`CURRENT_TIMESTAMP`),
 	isDel: integer('is_del').default(0).notNull()

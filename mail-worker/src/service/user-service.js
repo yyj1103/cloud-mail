@@ -72,7 +72,7 @@ const userService = {
 
 		const byteLength = Math.floor(match[2].length * 3 / 4);
 
-		if (byteLength > 2 * 1024 * 1024) {
+		if (byteLength > 5 * 1024 * 1024) {
 			throw new BizError(t('avatarTooLarge'));
 		}
 

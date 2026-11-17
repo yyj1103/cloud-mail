@@ -271,6 +271,35 @@ function formatName(email) {
   return email[0]?.toUpperCase() || ''
 }
 
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function compressAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      // 裁成正方形：竖图取顶部（留住人脸），横图取中间
+      const side = Math.min(img.width, img.height)
+      const sx = (img.width - side) / 2
+      const canvas = document.createElement('canvas')
+      canvas.width = 512
+      canvas.height = 512
+      canvas.getContext('2d').drawImage(img, sx, 0, side, side, 0, 0, 512, 512)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
 function onAvatarFile(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
@@ -279,21 +308,27 @@ function onAvatarFile(event) {
     ElMessage({ message: t('avatarInvalidType'), type: 'error', plain: true })
     return
   }
-  if (file.size > 2 * 1024 * 1024) {
-    ElMessage({ message: t('avatarTooLarge'), type: 'error', plain: true })
-    return
-  }
-  const reader = new FileReader()
-  reader.onload = async () => {
+  ;(async () => {
     try {
-      await setAvatar(reader.result)
-      userStore.user.avatar = reader.result
+      let dataUrl
+      if (file.type === 'image/gif') {
+        // 动图保持原样，只限大小
+        if (file.size > 5 * 1024 * 1024) {
+          ElMessage({ message: t('avatarTooLarge'), type: 'error', plain: true })
+          return
+        }
+        dataUrl = await readFileAsDataURL(file)
+      } else {
+        // 静态图多大都能换：自动裁成 512 正方形再上传
+        dataUrl = await compressAvatar(file)
+      }
+      await setAvatar(dataUrl)
+      userStore.user.avatar = dataUrl
       ElMessage({ message: t('avatarUpdated'), type: 'success', plain: true })
     } catch (e) {
       // 服务端错误已由请求拦截器提示
     }
-  }
-  reader.readAsDataURL(file)
+  })()
 }
 
 function isInsideUserCard(target) {

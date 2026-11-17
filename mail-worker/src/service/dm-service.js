@@ -190,17 +190,33 @@ const dmService = {
 	},
 
 	async sendMessage(c, params, userId) {
-		let { receiverUserId, content } = params;
+		let { receiverUserId, content, type } = params;
 
 		receiverUserId = Number(receiverUserId);
-		content = (content || '').trim();
+		type = Number(type) === 1 ? 1 : 0;
 
-		if (!content) {
-			throw new BizError(t('emptyMessage'));
-		}
+		if (type === 1) {
+			content = (content || '').trim();
 
-		if (content.length > 2000) {
-			throw new BizError(t('messageTooLong'));
+			const match = content.match(/^data:image\/(jpeg|png|gif|webp);base64,([A-Za-z0-9+/=]+)$/);
+
+			if (!match) {
+				throw new BizError(t('invalidImage'));
+			}
+
+			if (Math.floor(match[2].length * 3 / 4) > 1024 * 1024) {
+				throw new BizError(t('imageTooLarge'));
+			}
+		} else {
+			content = (content || '').trim();
+
+			if (!content) {
+				throw new BizError(t('emptyMessage'));
+			}
+
+			if (content.length > 2000) {
+				throw new BizError(t('messageTooLong'));
+			}
 		}
 
 		if (!await this.isFriend(c, userId, receiverUserId)) {
@@ -219,7 +235,8 @@ const dmService = {
 		const { messageId } = await orm(c).insert(privateMessage).values({
 			senderUserId: userId,
 			receiverUserId,
-			content
+			content,
+			type
 		}).returning().get();
 
 		return messageId;
