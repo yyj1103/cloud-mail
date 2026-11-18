@@ -1,5 +1,5 @@
 <template>
-  <div class="dm-page" :style="dmPageStyle">
+  <div class="dm-page" ref="dmPageRef" :style="dmPageStyle">
     <div class="dm-side" :class="{ 'side-hidden': mobileChat }">
       <div class="add-friend">
         <el-input
@@ -252,7 +252,8 @@ const inputRef = ref(null)
 const imageInput = ref(null)
 const emojiList = ['😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜', '😎', '🤔', '😴', '😭', '😡', '🥺', '😏', '🙂', '😉', '😅', '😢', '😋', '🤗', '😷', '🤢', '🥳', '😤', '🙄', '😬', '🤐', '😳', '🥰', '😇', '🤩', '😈', '👍', '👎', '👏', '🙏', '👌', '✌️', '🤞', '👋', '💪', '🙌', '👀', '💕', '💔', '💯', '🔥', '✨', '🎉', '🎁', '🌹', '🍓', '🍕', '☕', '⚽', '🎮', '🚗', '✈️', '🌙', '⭐', '💤', '❓', '❗']
 const msgScrollRef = ref(null)
-// 键盘弹起时 .dm-page 的高度（px）：visualViewport 兜底，null 表示用 CSS（100dvh - 60px）
+const dmPageRef = ref(null)
+// 键盘弹起时 .dm-page 的高度（px）：visualViewport 兜底，null 表示用 CSS（100dvh - 60px - var(--safe-top)）
 const kbPageHeight = ref(null)
 const dmPageStyle = computed(() => (kbPageHeight.value ? { height: kbPageHeight.value + 'px' } : null))
 const msgPage = ref(1)
@@ -686,7 +687,10 @@ function updatePageHeight() {
   }
   const gap = window.innerHeight - window.visualViewport.height
   if (gap > 120) {
-    kbPageHeight.value = Math.max(200, Math.round(window.visualViewport.height - 60))
+    // 全屏/standalone 时顶栏长高了 --safe-top（从 .layout 继承的变量），也要减掉，
+    // 否则输入条会被键盘盖住 --safe-top 那么高
+    const safeTop = parseFloat(getComputedStyle(dmPageRef.value).getPropertyValue('--safe-top')) || 0
+    kbPageHeight.value = Math.max(200, Math.round(window.visualViewport.height - 60 - safeTop))
   } else {
     kbPageHeight.value = null
   }
@@ -1396,14 +1400,15 @@ defineOptions({
 @media (max-width: 767px) {
   .dm-page {
     height: 100%;
-    height: calc(100dvh - 60px);
+    // 全屏/standalone 时顶栏长高了 --safe-top，聊天页也要跟着减掉，否则输入条会被顶出可视区
+    height: calc(100dvh - 60px - var(--safe-top, 0px));
   }
 
   .dm-side {
     width: 100%;
     border-right: none;
-    // 全幅列表 + 底部留出固定底部导航的空位，避免最后一行被导航遮住
-    padding: 8px 0 calc(56px + env(safe-area-inset-bottom, 0px));
+    // 全幅列表 + 底部留出悬浮胶囊导航的空位（导航 56px + 底边 12px 再多留 12px），避免最后一行被导航遮住
+    padding: 8px 0 calc(80px + env(safe-area-inset-bottom, 0px));
   }
 
   // Telegram 式加好友搜索框：圆角搜索框

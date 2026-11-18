@@ -1594,9 +1594,9 @@ ul {
     }
   }
 
-  // 虚拟列表底部留出固定底部导航的空位，避免最后一行被导航遮住
+  // 虚拟列表底部留出悬浮胶囊导航的空位（导航 56px + 底边 12px 再多留 12px），避免最后一行被导航遮住
   .virtual {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
 }
 

@@ -101,6 +101,13 @@ onBeforeUnmount(() => {
   top: 0;
   left: 0;
   overflow: hidden;
+  // 顶栏安全区高度（手机状态栏）：只在全屏（Fullscreen API）或主屏幕打开（standalone）时
+  // 取 env 值；普通浏览器模式下 display-mode 不匹配，--safe-top 保持 0，不会多出空白。
+  // 子孙元素（顶栏、私信页）继承这个变量。
+  --safe-top: 0px;
+  @media (display-mode: fullscreen), (display-mode: standalone) {
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
 }
 
 .main-container {
@@ -108,9 +115,10 @@ onBeforeUnmount(() => {
   background: var(--el-bg-color);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  // 手机端：底部导航是 fixed 定位，内容底部留出空位，避免最后一行被导航遮住
+  // 手机端：底部导航是悬浮胶囊（56px 高 + 底边留 12px），内容底部留出空位，
+  // 56 + 12 再多留 12px，避免最后一行被导航遮住
   @media (max-width: 767px) {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -124,6 +132,14 @@ onBeforeUnmount(() => {
   padding: 0 0 0 0;
   @media (max-width: 767px) {
     height: 50px;
+  }
+  // 全屏或主屏幕打开时页面顶到屏幕最顶上，状态栏会盖住顶栏：
+  // 顶栏往下顶出状态栏的高度（内容区仍是 50px，border-box 下 padding 不撑高内容）；
+  // 普通浏览器模式下 display-mode 不匹配，不会多出空白。
+  @media (max-width: 767px) and (display-mode: fullscreen), (max-width: 767px) and (display-mode: standalone) {
+    height: calc(50px + var(--safe-top));
+    padding-top: var(--safe-top);
+    box-sizing: border-box;
   }
 }
 

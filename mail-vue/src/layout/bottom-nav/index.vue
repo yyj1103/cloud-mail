@@ -21,14 +21,13 @@
       </template>
     </el-dropdown>
 
-    <!-- 底部四个导航：私信 / 联系人 / 设置 / 我的 -->
+    <!-- 底部四个导航：主页 / 联系人 / 设置 / 我的 -->
     <nav class="mobile-nav">
-      <button class="nav-item" :class="{ active: activeTab === 'dm' }" @click="goDm">
+      <button class="nav-item" :class="{ active: activeTab === 'email' }" @click="goHome">
         <span class="nav-icon">
-          <Icon icon="solar:chat-line-bold" width="24" height="24" />
-          <span v-if="dmStore.unread > 0" class="nav-badge">{{ dmStore.unread > 99 ? '99+' : dmStore.unread }}</span>
+          <Icon icon="solar:home-bold" width="24" height="24" />
         </span>
-        <span class="nav-label">{{ $t('dm') }}</span>
+        <span class="nav-label">{{ $t('homeTab') }}</span>
       </button>
       <button class="nav-item" :class="{ active: activeTab === 'contacts' }" @click="goContacts">
         <Icon icon="si:user-alt-2-line" width="24" height="24" />
@@ -68,7 +67,14 @@ const activeTab = computed(() => route.meta?.name || '')
 const chromeVisible = computed(() => !(route.name === 'dm' && dmStore.inChat))
 const initial = computed(() => (userStore.user?.name || userStore.user?.email || '我').charAt(0).toUpperCase())
 
+function goHome() {
+  // 第一个 tab 是主页：跳到收件箱（主页路由 /inbox，name 为 'email'）
+  if (route.name !== 'email') {
+    router.push({ name: 'email' })
+  }
+}
 function goDm() {
+  // 右下角 + 菜单里的“发起私信”仍进私信页，/dm 路由保留
   if (route.name === 'dm') {
     // 已在私信页：回到会话列表
     uiStore.dmListSignal++
@@ -106,11 +112,11 @@ function handleFabCommand(cmd) {
     display: block;
   }
 
-  // 右下角蓝色圆形 + 按钮，浮在底部导航上方
+  // 右下角蓝色圆形 + 按钮，浮在悬浮胶囊导航上方（胶囊顶边在 12+56=68px 处，+ 按钮底边在 84px，留 16px 空隙）
   .fab {
     position: fixed;
     right: 16px;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 16px);
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
     z-index: 300;
     width: 56px;
     height: 56px;
@@ -125,17 +131,19 @@ function handleFabCommand(cmd) {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   }
 
-  // 底部四个导航
+  // 底部四个导航：Telegram 式悬浮圆角胶囊——不贴满全宽、不贴底边，
+  // 左右各留 16px、底边留 12px（再加手势条安全距离），圆角 28px，带阴影
   .mobile-nav {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 16px;
+    right: 16px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     z-index: 300;
-    height: calc(56px + env(safe-area-inset-bottom, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    height: 56px;
+    border-radius: 28px;
     background: var(--el-bg-color);
-    border-top: 1px solid var(--el-border-color-lighter);
+    border: 1px solid var(--el-border-color-lighter);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     display: flex;
     box-sizing: border-box;
   }
@@ -165,23 +173,6 @@ function handleFabCommand(cmd) {
     align-items: center;
     justify-content: center;
     height: 24px;
-  }
-
-  // 未读数：Telegram 蓝色圆徽章
-  .nav-badge {
-    position: absolute;
-    top: -5px;
-    right: -10px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: 8px;
-    background: var(--el-color-primary);
-    color: #fff;
-    font-size: 10px;
-    line-height: 16px;
-    text-align: center;
-    box-sizing: border-box;
   }
 
   .nav-label {
