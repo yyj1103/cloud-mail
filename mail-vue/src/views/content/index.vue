@@ -84,7 +84,7 @@
 <script setup>
 import ShadowHtml from '@/components/shadow-html/index.vue'
 import {computed, reactive, ref, watch, onMounted, onUnmounted, nextTick} from "vue";
-import {useRouter} from 'vue-router'
+import {useRouter, useRoute} from 'vue-router'
 import {ElMessage, ElMessageBox} from 'element-plus'
 import {emailDelete, emailRead} from "@/request/email.js";
 import {Icon} from "@iconify/vue";
@@ -107,6 +107,7 @@ const settingStore = useSettingStore();
 const accountStore = useAccountStore();
 const emailStore = useEmailStore();
 const router = useRouter()
+const route = useRoute()
 const sendNameRef = ref(null)
 const senderWrapped = ref(false)
 let senderResizeObserver = null
@@ -205,6 +206,13 @@ watch(
 
 onMounted(() => {
   tryMarkRead()
+  // 正文缺失兜底：这封既不在 detailMap、本身又没有正文时（打开时没赶上列表后台
+  // full 拉取，或重进应用后 contentData 存的是空壳），按当前文件夹精确定位补拉一封；
+  // 补进 detailMap 后正文自己出现。正常有正文时不触发。
+  const current = emailStore.contentData.email
+  if (current?.emailId && !(current.content || current.text) && !emailStore.detailMap[current.emailId]) {
+    emailStore.ensureDetail(route.params.mailbox, current.emailId)
+  }
   window.addEventListener('keydown', handleKeyDown);
   senderResizeObserver = new ResizeObserver(() => updateSenderWrap())
   if (sendNameRef.value) senderResizeObserver.observe(sendNameRef.value)

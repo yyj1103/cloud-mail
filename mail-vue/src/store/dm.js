@@ -19,6 +19,9 @@ export const useDmStore = defineStore('dm', {
         // 头像 base64 缓存：服务端只在 avatarVer 变化时才回传头像，没变化时靠这份缓存补；
         // 放 store 里，离开页面不丢，再进页头像不用重新下载
         avatarCache: new Map(),
+        // 消息缓存：按对方 userId 分会话存，只留最新 30 条，离开对话不清空；
+        // 进对话先画缓存、后台走增量拉取悄悄刷新，只有从没打开过的对话才显示“加载中…”
+        messagesCache: new Map(),
     }),
     actions: {
         refreshUnread() {
@@ -77,6 +80,29 @@ export const useDmStore = defineStore('dm', {
             this.incomingRequests = reqs?.incoming || []
             this.requestsLoaded = true
             return this.incomingRequests
+        },
+        // 取某会话缓存的消息：没有或已空返回 null（调用方按“从没打开过”处理，重新拉取）
+        cachedMessages(userId) {
+            const list = this.messagesCache.get(userId)
+            return list && list.length ? list : null
+        },
+        // 存某会话的消息：只留最新 30 条（消息按 id 升序，老的在前）；
+        // 空列表表示该会话已没有消息，删掉缓存，下次进对话重新拉取
+        cacheMessages(userId, list) {
+            if (userId == null) return
+            if (!list || !list.length) {
+                this.messagesCache.delete(userId)
+                return
+            }
+            this.messagesCache.set(userId, list.slice(-30))
+            // 会话数也封顶：超过 50 个会话时删掉最早进缓存的
+            while (this.messagesCache.size > 50) {
+                this.messagesCache.delete(this.messagesCache.keys().next().value)
+            }
+        },
+        // 删好友时把该会话的消息缓存一起清掉
+        dropMessages(userId) {
+            this.messagesCache.delete(userId)
         },
     }
 })

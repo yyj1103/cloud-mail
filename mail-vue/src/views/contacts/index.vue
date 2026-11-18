@@ -17,6 +17,8 @@
             <template #prefix>
               <Icon icon="ic:round-search" width="18" height="18" />
             </template>
+            <!-- 输了用户名、没带 @ 时才在框里显示本站后缀；空着或输了完整邮箱时不显示 -->
+            <template v-if="searchKeyword.trim() && !searchKeyword.includes('@')" #append>@{{ mailDomain }}</template>
           </el-input>
           <el-button type="primary" :loading="searching" @click="handleSearch">{{ t('search') }}</el-button>
         </div>
@@ -96,6 +98,9 @@ const addFriendLabel = computed(() => {
   if (searchStatus.value === 'friend') return t('dmAlreadyFriend')
   return t('dmAddFriend')
 })
+
+// 搜索框后缀域名：与 normalizeEmail 补的后缀同源（本站域名），输用户名时才在框里显示
+const mailDomain = computed(() => settingStore.settings?.domain || 'qixuan.ccwu.cc')
 
 function avatarText(user) {
   return (user.name || user.email || '?').charAt(0).toUpperCase()
@@ -218,6 +223,13 @@ onMounted(() => {
   // Telegram 式圆角搜索框
   :deep(.search-input .el-input__wrapper) {
     border-radius: 999px;
+    background: var(--el-fill-color-light);
+    box-shadow: none;
+  }
+
+  // 带 @后缀时：后缀接在输入框右边，右圆角、和输入框同底色（和私信页一致）
+  :deep(.search-input .el-input-group__append) {
+    border-radius: 0 999px 999px 0;
     background: var(--el-fill-color-light);
     box-shadow: none;
   }

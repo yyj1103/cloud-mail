@@ -8,7 +8,7 @@
             @keyup.enter="doSearch"
             clearable
         >
-          <template v-if="!searchEmail.includes('@')" #append>@{{ mailDomain }}</template>
+          <template v-if="searchEmail.trim() && !searchEmail.includes('@')" #append>@{{ mailDomain }}</template>
         </el-input>
         <el-button type="primary" :loading="searchLoading" @click="doSearch">{{ $t('search') }}</el-button>
       </div>
@@ -400,6 +400,8 @@ async function doSaveEdit() {
       target.content = content
       target.isEdited = 1
     }
+    // 原地改了内容，同步写回缓存
+    dmStore.cacheMessages(currentFriend.value.userId, messages.value)
     editingMessage.value = null
     inputContent.value = ''
     await refreshAll()
@@ -462,6 +464,8 @@ function askDeleteSelected() {
     }
     const ids = new Set(mine.map(m => m.messageId))
     messages.value = messages.value.filter(m => !ids.has(m.messageId))
+    // 撤回后本地列表变了，同步写回缓存（下次进对话不再出现已撤回的消息）
+    dmStore.cacheMessages(currentFriend.value.userId, messages.value)
     exitSelectMode()
     await refreshAll()
   })
@@ -538,9 +542,12 @@ async function doRemoveFriend() {
     cancelButtonText: t('cancel'),
     type: 'warning'
   }).then(async () => {
-    await removeFriend(currentFriend.value.userId)
+    const friendUserId = currentFriend.value.userId
+    await removeFriend(friendUserId)
     currentFriend.value = null
     messages.value = []
+    // 删好友连同该会话的消息缓存一起清掉
+    dmStore.dropMessages(friendUserId)
     mobileChat.value = false
     exitSelectMode()
     replyTarget.value = null
@@ -560,7 +567,21 @@ async function openConversation(conv) {
   replyTarget.value = null
   editingMessage.value = null
   inputContent.value = ''
-  await loadMessages(true, true)
+  // 消息缓存优先：有缓存先画上次的消息、不显示“加载中…”；后台走增量拉取悄悄刷新
+  // （新消息进来、对方撤回的消息消失都由 pollMessages 处理）；只有从没打开过的对话才重新拉取
+  const cached = dmStore.cachedMessages(conv.userId)
+  if (cached) {
+    messages.value = cached
+    hasMore.value = cached.length >= 30
+    scrollToBottom()
+    try {
+      await pollMessages()
+    } catch (e) {
+      // 后台刷新失败就留着缓存，下次 10 秒轮询再试
+    }
+  } else {
+    await loadMessages(true, true)
+  }
 }
 
 async function loadMessages(reset, scroll) {
@@ -574,6 +595,8 @@ async function loadMessages(reset, scroll) {
       messages.value = [...(list || []), ...messages.value]
     }
     hasMore.value = (list || []).length >= 30
+    // 写回会话消息缓存（只留最新 30 条），下次进对话直接画
+    dmStore.cacheMessages(currentFriend.value.userId, messages.value)
     if (scroll) {
       scrollToBottom()
     }
@@ -593,6 +616,8 @@ async function pollMessages() {
   if (!res) return
   if (Array.isArray(res)) {
     messages.value = res
+    // 增量结果是全量列表时也写回缓存
+    dmStore.cacheMessages(currentFriend.value.userId, messages.value)
     return
   }
   const { list, ids } = res
@@ -624,6 +649,8 @@ async function pollMessages() {
       messages.value = [...messages.value, ...fresh]
     }
   }
+  // 增量刷新（新消息 + 撤回过滤）完成后写回缓存，下次进对话直接画
+  dmStore.cacheMessages(currentFriend.value.userId, messages.value)
 }
 
 async function loadMore() {
