@@ -67,6 +67,13 @@
         <el-button type="primary" :disabled="isInstalled" @click="handleInstall">{{ isInstalled ? $t('addedToHomeScreen') : $t('addToHomeScreen') }}</el-button>
       </div>
     </div>
+    <div class="preference-item">
+      <div class="title">{{$t('fullscreen')}}</div>
+      <div class="install-tip">{{$t('fullscreenTip')}}</div>
+      <div>
+        <el-button type="primary" :class="{ 'fs-unsupported': !fullscreenSupported }" @click="handleFullscreen">{{ fullscreenSupported ? (isFullscreen ? $t('exitFullscreen') : $t('fullscreen')) : $t('fullscreenUnsupportedBtn') }}</el-button>
+      </div>
+    </div>
     <div class="del-email" v-perm="'my:delete'">
       <div class="title">{{$t('deleteUser')}}</div>
       <div style="color: var(--regular-text-color);">
@@ -88,7 +95,7 @@
   </div>
 </template>
 <script setup>
-import {reactive, ref, defineOptions} from 'vue'
+import {reactive, ref, defineOptions, onMounted, onUnmounted} from 'vue'
 import {resetPassword, userDelete} from "@/request/my.js";
 import {useUserStore} from "@/store/user.js";
 import router from "@/router/index.js";
@@ -162,6 +169,40 @@ function changeLang(lang) {
   }
   localStorage.setItem('setting', JSON.stringify({...setting, lang}))
   window.location.reload()
+}
+
+// 全屏：安卓和电脑浏览器用 Fullscreen API；iPhone 浏览器没有该接口，按钮置灰，点它提示用“添加到主屏幕”
+const fullscreenEl = () => document.fullscreenElement || document.webkitFullscreenElement
+const fullscreenSupported = ref(!!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen))
+const isFullscreen = ref(!!fullscreenEl())
+function onFullscreenChange() {
+  isFullscreen.value = !!fullscreenEl()
+}
+onMounted(() => {
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+})
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
+})
+async function handleFullscreen() {
+  if (!fullscreenSupported.value) {
+    ElMessageBox.alert(t('fullscreenUnsupported'), t('fullscreen'), { confirmButtonText: t('confirm') })
+    return
+  }
+  try {
+    if (fullscreenEl()) {
+      if (document.exitFullscreen) await document.exitFullscreen()
+      else if (document.webkitExitFullscreen) await document.webkitExitFullscreen()
+    } else {
+      const el = document.documentElement
+      if (el.requestFullscreen) await el.requestFullscreen()
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen()
+    }
+  } catch (e) {
+    ElMessageBox.alert(t('fullscreenFailed'), t('fullscreen'), { confirmButtonText: t('confirm') })
+  }
 }
 
 // 添加到主屏幕：有原生安装事件（安卓 Chrome）就弹安装框；
@@ -357,6 +398,11 @@ function submitPwd() {
   .install-tip {
     font-size: 13px;
     color: var(--el-text-color-secondary);
+  }
+
+  .fs-unsupported {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
 
   .del-email {
