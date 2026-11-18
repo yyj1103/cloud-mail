@@ -26,8 +26,14 @@ export function removeFriend(friendUserId) {
     return http.delete('/dm/friend', {params: {friendUserId}})
 }
 
-export function sendMessage(receiverUserId, content, type = 0) {
-    return http.post('/dm/message', {receiverUserId, content, type})
+export function sendMessage(receiverUserId, content, type = 0, replyToMessageId) {
+    const data = {receiverUserId, content, type}
+    if (replyToMessageId) data.replyToMessageId = replyToMessageId
+    return http.post('/dm/message', data)
+}
+
+export function editMessage(messageId, content) {
+    return http.put('/dm/message', {messageId, content})
 }
 
 export function listConversations(avatarVers) {

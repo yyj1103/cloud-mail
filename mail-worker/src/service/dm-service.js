@@ -215,7 +215,7 @@ const dmService = {
 	},
 
 	async sendMessage(c, params, userId) {
-		let { receiverUserId, content, type } = params;
+		let { receiverUserId, content, type, replyToMessageId } = params;
 
 		receiverUserId = Number(receiverUserId);
 		type = Number(type) === 1 ? 1 : 0;
@@ -248,6 +248,21 @@ const dmService = {
 			throw new BizError(t('notFriend'));
 		}
 
+		// 引用回复：被引用的消息必须是同一对话里还没被撤回的消息，否则忽略引用
+		let replyTo = 0;
+		const replyId = Number(replyToMessageId);
+		if (!isNaN(replyId) && replyId > 0) {
+			const target = await orm(c).select().from(privateMessage).where(
+				and(eq(privateMessage.messageId, replyId), eq(privateMessage.isDel, isDel.NORMAL),
+					or(
+						and(eq(privateMessage.senderUserId, userId), eq(privateMessage.receiverUserId, receiverUserId)),
+						and(eq(privateMessage.senderUserId, receiverUserId), eq(privateMessage.receiverUserId, userId))
+					))).get();
+			if (target) {
+				replyTo = replyId;
+			}
+		}
+
 		const key = kvConst.DM_SEND + userId + ':' + dayjs().format('YYYYMMDDHHmm');
 		const n = Number(await c.env.kv.get(key) || 0);
 
@@ -261,7 +276,8 @@ const dmService = {
 			senderUserId: userId,
 			receiverUserId,
 			content,
-			type
+			type,
+			replyToMessageId: replyTo
 		}).returning().get();
 
 		return messageId;
@@ -329,6 +345,46 @@ const dmService = {
 	},
 
 
+	// 给消息列表挂上引用原文：一次查出所有被引用的消息；图片只留类型不带原内容；
+	// 被引用的消息已被撤回时不返回，前端就不显示引用块（撤回的消息双方都看不见）
+	async attachReplyInfo(c, list, userId, friendUserId) {
+		if (!list || !list.length) {
+			return list;
+		}
+
+		const replyIds = [...new Set(list.map(m => m.replyToMessageId).filter(id => id))];
+
+		if (!replyIds.length) {
+			return list;
+		}
+
+		const rows = await orm(c).select().from(privateMessage).where(
+			and(
+				inArray(privateMessage.messageId, replyIds),
+				eq(privateMessage.isDel, isDel.NORMAL),
+				or(
+					and(eq(privateMessage.senderUserId, userId), eq(privateMessage.receiverUserId, friendUserId)),
+					and(eq(privateMessage.senderUserId, friendUserId), eq(privateMessage.receiverUserId, userId))
+				)
+			)).all();
+
+		const map = {};
+		for (const r of rows) {
+			map[r.messageId] = {
+				messageId: r.messageId,
+				senderUserId: r.senderUserId,
+				type: r.type,
+				content: r.type === 1 ? null : (r.content || '').slice(0, 100)
+			};
+		}
+
+		for (const m of list) {
+			m.replyTo = (m.replyToMessageId && map[m.replyToMessageId]) || null;
+		}
+
+		return list;
+	},
+
 	async listMessages(c, params, userId) {
 		let { friendUserId, num, size, after } = params;
 
@@ -378,7 +434,7 @@ const dmService = {
 
 			await markRead();
 
-			return { list, ids: idRows.map(r => r.messageId) };
+			return { list: await this.attachReplyInfo(c, list, userId, friendUserId), ids: idRows.map(r => r.messageId) };
 		}
 
 		const list = await orm(c).select().from(privateMessage).where(
@@ -387,7 +443,7 @@ const dmService = {
 
 		await markRead();
 
-		return list.reverse();
+		return (await this.attachReplyInfo(c, list, userId, friendUserId)).reverse();
 	},
 
 
@@ -400,6 +456,28 @@ const dmService = {
 			)).get();
 
 		return total || 0;
+	},
+
+	async editMessage(c, params, userId) {
+		const messageId = Number(params.messageId);
+		const content = (params.content || '').trim();
+
+		if (!content) {
+			throw new BizError(t('emptyMessage'));
+		}
+
+		if (content.length > 2000) {
+			throw new BizError(t('messageTooLong'));
+		}
+
+		const row = await orm(c).select().from(privateMessage).where(eq(privateMessage.messageId, messageId)).get();
+
+		// 只能编辑自己发的、没被撤回的文字消息
+		if (!row || row.senderUserId !== userId || row.isDel === isDel.DELETE || row.type === 1) {
+			throw new BizError(t('dmCannotEdit'));
+		}
+
+		await orm(c).update(privateMessage).set({ content, isEdited: 1 }).where(eq(privateMessage.messageId, messageId)).run();
 	},
 
 	async deleteMessage(c, params, userId) {

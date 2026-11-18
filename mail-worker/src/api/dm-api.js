@@ -38,6 +38,11 @@ app.post('/dm/message', async (c) => {
 	return c.json(result.ok(messageId));
 });
 
+app.put('/dm/message', async (c) => {
+	await dmService.editMessage(c, await c.req.json(), userContext.getUserId(c));
+	return c.json(result.ok());
+});
+
 app.get('/dm/conversations', async (c) => {
 	const data = await dmService.listConversations(c, c.req.query(), userContext.getUserId(c));
 	return c.json(result.ok(data));

@@ -84,20 +84,31 @@
     <div class="dm-main" :class="{ 'main-show': mobileChat }">
       <template v-if="currentFriend">
         <div class="chat-header">
-          <el-button v-if="isMobile" class="back-btn" link @click="mobileChat = false">&lt; {{ $t('dmFriends') }}</el-button>
-          <img v-if="currentFriend.avatar" class="avatar-img friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
-          <div v-else class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
-          <div class="chat-title">
-            <div class="chat-name">{{ currentFriend.name }}</div>
-          </div>
-          <el-dropdown trigger="click">
-            <el-button link class="more-btn">···</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="doRemoveFriend">{{ $t('dmRemoveFriend') }}</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <template v-if="selecting">
+            <el-button class="select-exit" link @click="exitSelectMode">✕</el-button>
+            <div class="select-count">{{ $t('dmSelectedCount', { n: selectedIds.size }) }}</div>
+            <div class="chat-title"></div>
+            <button v-if="canEdit" class="select-action" type="button" :title="$t('dmEdit')" @click="startEdit"><Icon icon="mdi:pencil-outline" width="20" height="20" /></button>
+            <button v-if="canCopy" class="select-action" type="button" :title="$t('dmCopy')" @click="doCopySelected"><Icon icon="mdi:content-copy" width="20" height="20" /></button>
+            <button class="select-action" type="button" :title="$t('dmForward')" @click="openForwardDialog"><Icon icon="mdi:share-outline" width="20" height="20" /></button>
+            <button v-if="canDelete" class="select-action danger" type="button" :title="$t('delete')" @click="askDeleteSelected"><Icon icon="mdi:trash-can-outline" width="20" height="20" /></button>
+          </template>
+          <template v-else>
+            <el-button v-if="isMobile" class="back-btn" link @click="mobileChat = false">&lt; {{ $t('dmFriends') }}</el-button>
+            <img v-if="currentFriend.avatar" class="avatar-img friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
+            <div v-else class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
+            <div class="chat-title">
+              <div class="chat-name">{{ currentFriend.name }}</div>
+            </div>
+            <el-dropdown trigger="click">
+              <el-button link class="more-btn">···</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="doRemoveFriend">{{ $t('dmRemoveFriend') }}</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </template>
         </div>
         <el-scrollbar ref="msgScrollRef" class="message-list">
           <div v-if="messagesLoading && !messages.length" class="loading-tip">{{ $t('dmLoading') }}</div>
@@ -108,20 +119,48 @@
             <div v-if="showTimeLabel(index)" class="time-label">{{ formatTime(msg.createTime) }}</div>
             <div
                 class="message-row"
-                :class="{ mine: msg.senderUserId === userStore.user.userId }"
+                :class="{ mine: msg.senderUserId === userStore.user.userId, selecting, selected: selectedIds.has(msg.messageId) }"
+                @click="onMessageRowClick(msg)"
             >
+              <span v-if="selecting" class="select-circle" :class="{ checked: selectedIds.has(msg.messageId) }">
+                <span v-if="selectedIds.has(msg.messageId)">✓</span>
+              </span>
               <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
               <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
-              <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="[msg.content]" fit="cover" @contextmenu.prevent="askRecallMessage(msg)" />
-              <div v-else class="message-bubble" @contextmenu.prevent="askRecallMessage(msg)">
-                <div class="message-content">{{ msg.content }}</div>
+              <div class="message-body">
+                <div v-if="msg.replyTo" class="reply-quote">
+                  <div class="reply-quote-name">{{ replySenderName(msg.replyTo) }}</div>
+                  <div class="reply-quote-content">{{ msg.replyTo.type === 1 ? $t('dmImageMsg') : msg.replyTo.content }}</div>
+                </div>
+                <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="selecting ? [] : [msg.content]" fit="cover" @contextmenu.prevent="onMessageContextMenu(msg)" />
+                <div v-else class="message-bubble" @contextmenu.prevent="onMessageContextMenu(msg)">
+                  <div class="message-content">{{ msg.content }}</div>
+                  <div v-if="msg.isEdited" class="edited-mark">{{ $t('dmEdited') }}</div>
+                </div>
               </div>
               <img v-if="msg.senderUserId === userStore.user.userId && userStore.user.avatar" class="msg-avatar" :src="userStore.user.avatar" alt="">
               <div v-else-if="msg.senderUserId === userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(userStore.user.email) }}</div>
             </div>
           </template>
         </el-scrollbar>
-        <div class="chat-input">
+        <div v-if="selecting" class="select-actions">
+          <el-button class="select-action-btn" :disabled="selectedMessages.length !== 1" @click="startReply">↩ {{ $t('dmReply') }}</el-button>
+          <el-button class="select-action-btn" type="primary" :disabled="!selectedMessages.length" @click="openForwardDialog">↗ {{ $t('dmForward') }}</el-button>
+        </div>
+        <div v-else class="chat-input">
+          <div v-if="replyTarget" class="reply-bar">
+            <div class="reply-bar-info">
+              <span class="reply-bar-title">{{ $t('dmReplyingTo') }} {{ replyTargetName }}：</span>
+              <span class="reply-bar-content">{{ replyTargetSummary }}</span>
+            </div>
+            <el-button link @click="cancelReply">✕</el-button>
+          </div>
+          <div v-if="editingMessage" class="reply-bar">
+            <div class="reply-bar-info">
+              <span class="reply-bar-title">{{ $t('dmEditingMsg') }}</span>
+            </div>
+            <el-button link @click="cancelEdit">✕</el-button>
+          </div>
           <div v-show="emojiShow" class="emoji-panel">
             <span v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{ e }}</span>
           </div>
@@ -139,7 +178,7 @@
             />
             <button class="tool-btn" type="button" @click="imageInput.click()">🖼</button>
             <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onImageFile">
-            <el-button class="send-btn" type="primary" circle :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">➤</el-button>
+            <el-button class="send-btn" type="primary" circle :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">{{ editingMessage ? '✓' : '➤' }}</el-button>
           </div>
           <div class="privacy-tip">{{ $t('dmImagePrivacyTip') }}</div>
         </div>
@@ -149,12 +188,31 @@
     <el-dialog v-model="showFriendAvatar" :title="currentFriend?.name || currentFriend?.email" width="320" align-center>
       <img v-if="currentFriend?.avatar" :src="currentFriend.avatar" class="avatar-preview-img" alt="">
     </el-dialog>
+    <el-dialog v-model="forwardDialogVisible" :title="$t('dmForwardTitle')" width="340" align-center>
+      <div class="forward-list">
+        <div v-for="f in conversations" :key="f.userId" class="forward-item" :class="{ active: forwardTarget && forwardTarget.userId === f.userId }" @click="forwardTarget = f">
+          <img v-if="f.avatar" class="avatar-img" :src="f.avatar" alt="">
+          <div v-else class="letter-avatar">{{ formatName(f.name || f.email) }}</div>
+          <div class="result-info">
+            <div class="result-name">{{ f.name }}</div>
+            <div class="result-email">{{ f.email }}</div>
+          </div>
+          <span v-if="forwardTarget && forwardTarget.userId === f.userId" class="forward-check">✓</span>
+        </div>
+        <el-empty v-if="!conversations.length" :description="$t('dmNoFriends')" />
+      </div>
+      <template #footer>
+        <el-button @click="forwardDialogVisible = false">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" :loading="forwardLoading" :disabled="!forwardTarget" @click="doForward">{{ $t('confirm') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useI18n } from "vue-i18n";
+import { Icon } from '@iconify/vue'
 import { useUserStore } from "@/store/user.js";
 import { useDmStore } from "@/store/dm.js";
 import { tzDayjs } from "@/utils/day.js";
@@ -167,7 +225,8 @@ import {
   sendMessage,
   listConversations,
   listMessages,
-  deleteMessage
+  deleteMessage,
+  editMessage
 } from "@/request/dm.js";
 
 const { t } = useI18n()
@@ -198,6 +257,33 @@ const showFriendAvatar = ref(false)
 const isMobile = computed(() => window.innerWidth < 768)
 const mailDomain = computed(() => userStore.user.email?.split('@')[1] || 'qixuan.ccwu.cc')
 
+// 选择模式（Telegram 风格长按多选）
+const selecting = ref(false)
+const selectedIds = ref(new Set())
+const replyTarget = ref(null)
+const editingMessage = ref(null)
+const forwardDialogVisible = ref(false)
+const forwardTarget = ref(null)
+const forwardLoading = ref(false)
+
+const selectedMessages = computed(() => messages.value.filter(m => selectedIds.value.has(m.messageId)))
+const selectedMine = computed(() => selectedMessages.value.filter(m => m.senderUserId === userStore.user.userId))
+const canCopy = computed(() => selectedMessages.value.some(m => m.type === 0))
+const canEdit = computed(() => selectedMessages.value.length === 1
+    && selectedMessages.value[0].senderUserId === userStore.user.userId
+    && selectedMessages.value[0].type === 0)
+const canDelete = computed(() => selectedMine.value.length > 0)
+const replyTargetName = computed(() => {
+  if (!replyTarget.value) return ''
+  return replyTarget.value.senderUserId === userStore.user.userId
+      ? t('dmMe')
+      : (currentFriend.value?.name || currentFriend.value?.email || '')
+})
+const replyTargetSummary = computed(() => {
+  if (!replyTarget.value) return ''
+  return replyTarget.value.type === 1 ? t('dmImageMsg') : (replyTarget.value.content || '').slice(0, 60)
+})
+
 function normalizeEmail(input) {
   const value = input.trim()
   if (!value) return ''
@@ -222,15 +308,158 @@ function showTimeLabel(index) {
   return cur.diff(prev, 'minute') > 5
 }
 
-function askRecallMessage(msg) {
-  if (msg.senderUserId !== userStore.user.userId) return
+function enterSelectMode(msg) {
+  selecting.value = true
+  selectedIds.value = new Set([msg.messageId])
+  emojiShow.value = false
+}
+
+function exitSelectMode() {
+  selecting.value = false
+  selectedIds.value = new Set()
+}
+
+function toggleSelect(msg) {
+  const next = new Set(selectedIds.value)
+  if (next.has(msg.messageId)) {
+    next.delete(msg.messageId)
+  } else {
+    next.add(msg.messageId)
+  }
+  selectedIds.value = next
+  if (!next.size) {
+    exitSelectMode()
+  }
+}
+
+function onMessageContextMenu(msg) {
+  if (selecting.value) {
+    toggleSelect(msg)
+    return
+  }
+  enterSelectMode(msg)
+}
+
+function onMessageRowClick(msg) {
+  if (selecting.value) {
+    toggleSelect(msg)
+  }
+}
+
+function replySenderName(replyTo) {
+  if (!replyTo) return ''
+  return replyTo.senderUserId === userStore.user.userId
+      ? t('dmMe')
+      : (currentFriend.value?.name || currentFriend.value?.email || '')
+}
+
+function startReply() {
+  const msg = selectedMessages.value[0]
+  if (!msg) return
+  replyTarget.value = msg
+  exitSelectMode()
+  nextTick(() => inputRef.value?.textarea?.focus())
+}
+
+function cancelReply() {
+  replyTarget.value = null
+}
+
+function startEdit() {
+  const msg = selectedMessages.value[0]
+  if (!msg || msg.senderUserId !== userStore.user.userId || msg.type !== 0) return
+  editingMessage.value = msg
+  inputContent.value = msg.content
+  exitSelectMode()
+  nextTick(() => {
+    const ta = inputRef.value?.textarea
+    if (ta) {
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    }
+  })
+}
+
+function cancelEdit() {
+  editingMessage.value = null
+  inputContent.value = ''
+}
+
+async function doSaveEdit() {
+  const content = inputContent.value.trim()
+  if (!content || !editingMessage.value || sendLoading.value) return
+  sendLoading.value = true
+  try {
+    await editMessage(editingMessage.value.messageId, content)
+    const target = messages.value.find(m => m.messageId === editingMessage.value.messageId)
+    if (target) {
+      target.content = content
+      target.isEdited = 1
+    }
+    editingMessage.value = null
+    inputContent.value = ''
+    await refreshAll()
+  } finally {
+    sendLoading.value = false
+  }
+}
+
+async function doCopySelected() {
+  const texts = selectedMessages.value.filter(m => m.type === 0).map(m => m.content)
+  if (!texts.length) return
+  const text = texts.join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (e) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
+  ElMessage({ message: t('dmCopied'), type: 'success', plain: true })
+  exitSelectMode()
+}
+
+function openForwardDialog() {
+  if (!selectedMessages.value.length) return
+  forwardTarget.value = null
+  forwardDialogVisible.value = true
+}
+
+async function doForward() {
+  if (!forwardTarget.value || forwardLoading.value) return
+  const targets = [...selectedMessages.value].sort((a, b) => a.messageId - b.messageId)
+  forwardLoading.value = true
+  try {
+    for (const m of targets) {
+      await sendMessage(forwardTarget.value.userId, m.content, m.type)
+    }
+    ElMessage({ message: t('dmForwarded'), type: 'success', plain: true })
+    forwardDialogVisible.value = false
+    exitSelectMode()
+    await refreshAll()
+  } finally {
+    forwardLoading.value = false
+  }
+}
+
+function askDeleteSelected() {
+  const mine = selectedMine.value
+  if (!mine.length) return
   ElMessageBox.confirm(t('dmRecallMessageConfirm'), {
     confirmButtonText: t('confirm'),
     cancelButtonText: t('cancel'),
     type: 'warning'
   }).then(async () => {
-    await deleteMessage(msg.messageId)
-    messages.value = messages.value.filter(m => m.messageId !== msg.messageId)
+    for (const m of mine) {
+      await deleteMessage(m.messageId)
+    }
+    const ids = new Set(mine.map(m => m.messageId))
+    messages.value = messages.value.filter(m => !ids.has(m.messageId))
+    exitSelectMode()
+    await refreshAll()
   })
 }
 
@@ -331,6 +560,10 @@ async function doRemoveFriend() {
     currentFriend.value = null
     messages.value = []
     mobileChat.value = false
+    exitSelectMode()
+    replyTarget.value = null
+    editingMessage.value = null
+    inputContent.value = ''
     await refreshAll()
   })
 }
@@ -341,6 +574,10 @@ async function openConversation(conv) {
   msgPage.value = 1
   hasMore.value = false
   mobileChat.value = true
+  exitSelectMode()
+  replyTarget.value = null
+  editingMessage.value = null
+  inputContent.value = ''
   await loadMessages(true, true)
 }
 
@@ -382,6 +619,21 @@ async function pollMessages() {
     const minId = ids.length ? Math.min(...ids) : Infinity
     // 对方撤回的消息在服务端已不可见，本地同步去掉（早于可见窗口的老消息不动）
     messages.value = messages.value.filter(m => idSet.has(m.messageId) || m.messageId < minId)
+    // 被撤回的消息如果正被某条消息引用，引用块也一起去掉
+    for (const m of messages.value) {
+      if (m.replyTo && m.replyTo.messageId >= minId && !idSet.has(m.replyTo.messageId)) {
+        m.replyTo = null
+      }
+    }
+    // 选中的消息被撤回后从选择里去掉，选空了就退出选择模式
+    if (selecting.value) {
+      const alive = new Set(messages.value.map(m => m.messageId))
+      const pruned = new Set([...selectedIds.value].filter(id => alive.has(id)))
+      selectedIds.value = pruned
+      if (!pruned.size) {
+        exitSelectMode()
+      }
+    }
   }
   if (list && list.length) {
     const existing = new Set(messages.value.map(m => m.messageId))
@@ -497,12 +749,17 @@ async function onImageFile(event) {
 }
 
 async function doSend() {
+  if (editingMessage.value) {
+    await doSaveEdit()
+    return
+  }
   const content = inputContent.value.trim()
   if (!content || !currentFriend.value || sendLoading.value) return
   sendLoading.value = true
   try {
-    await sendMessage(currentFriend.value.userId, content)
+    await sendMessage(currentFriend.value.userId, content, 0, replyTarget.value?.messageId)
     inputContent.value = ''
+    replyTarget.value = null
     msgPage.value = 1
     await loadMessages(true, true)
     await refreshAll()
@@ -774,12 +1031,89 @@ defineOptions({
   justify-content: flex-end;
 }
 
-.message-bubble {
+.message-row.selecting {
+  position: relative;
+  padding-left: 30px;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.message-row.selected {
+  background: var(--el-fill-color-light);
+}
+
+.select-circle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.select-circle.checked {
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+}
+
+.message-body {
   max-width: 70%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.reply-quote {
+  padding: 5px 9px;
+  margin-bottom: 5px;
+  background: var(--el-fill-color-light);
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 6px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.message-row.mine .reply-quote {
+  background: rgba(64, 158, 255, 0.12);
+}
+
+.reply-quote-name {
+  font-weight: bold;
+  color: var(--el-color-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reply-quote-content {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+.message-bubble {
+  max-width: 100%;
   padding: 8px 12px;
   border-radius: 10px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-light);
+}
+
+.edited-mark {
+  font-size: 11px;
+  opacity: 0.65;
+  text-align: right;
+  margin-top: 2px;
 }
 
 .message-row.mine .message-bubble {
@@ -802,6 +1136,111 @@ defineOptions({
   border-radius: 10px;
   cursor: pointer;
   object-fit: cover;
+}
+
+.select-count {
+  background: var(--el-fill-color-light);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.select-exit {
+  font-size: 18px;
+  padding: 0 6px;
+}
+
+.select-action {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 50%;
+  color: var(--el-text-color-primary);
+}
+
+.select-action:hover {
+  background: var(--el-fill-color-light);
+}
+
+.select-action.danger {
+  color: var(--el-color-danger);
+}
+
+.select-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
+}
+
+.select-action-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 15px;
+}
+
+.reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: var(--el-fill-color-light);
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.reply-bar-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reply-bar-title {
+  font-weight: bold;
+  color: var(--el-color-primary);
+}
+
+.forward-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.forward-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.forward-item.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.forward-check {
+  color: var(--el-color-primary);
+  font-weight: bold;
+  font-size: 16px;
 }
 
 .chat-input {
@@ -956,8 +1395,12 @@ defineOptions({
     padding: 8px 12px 10px;
   }
 
-  .message-bubble {
+  .message-body {
     max-width: 85%;
+  }
+
+  .select-actions {
+    padding: 10px 12px 12px;
   }
 }
 </style>

@@ -59,6 +59,7 @@ const zh = {
 	emptyMessage: '消息内容不能为空',
 	messageTooLong: '消息不能超过2000字',
 	sendTooFast: '发送太快了，请稍后再试',
+	dmCannotEdit: '只能编辑自己发的文字消息',
 	avatarInvalidType: '头像只能是 JPG、PNG 或 GIF 图片',
 	avatarTooLarge: '头像图片不能超过 5MB',
 	invalidImage: '只能发送 JPG、PNG、GIF 或 WEBP 图片',

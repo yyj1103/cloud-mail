@@ -38,6 +38,7 @@ const dbInit = {
 		await this.v3_7DB(c);
 		await this.v3_8DB(c);
 		await this.v3_9DB(c);
+		await this.v3_10DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -49,6 +50,20 @@ const dbInit = {
 	async v3_9DB(c) {
 		// 普通用户（默认身份）每天可发 1 封站外邮件：之前默认身份是 ban，完全禁发
 		await c.env.db.prepare(`UPDATE role SET send_count = 1, send_type = 'day' WHERE is_default = 1;`).run();
+	},
+
+	async v3_10DB(c) {
+		// 私信引用回复与编辑：reply_to_message_id、is_edited
+		try {
+			await c.env.db.prepare(`ALTER TABLE private_message ADD COLUMN reply_to_message_id INTEGER NOT NULL DEFAULT 0;`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+		try {
+			await c.env.db.prepare(`ALTER TABLE private_message ADD COLUMN is_edited INTEGER NOT NULL DEFAULT 0;`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
 	},
 
 	async v3_8DB(c) {
