@@ -24,6 +24,8 @@ const zh = {
     dmImagePrivacyTip: '只会读取你选中的这张照片，不会访问整个相册',
     avatarChange: '更换头像',
     avatarPrivacyTip: '只会读取你选中的这张照片，不会访问整个相册',
+    avatarCrop: '裁剪头像',
+    avatarCropZoom: '缩放',
     avatarInvalidType: '请选择 JPG、PNG 或 GIF 图片',
     avatarTooLarge: '图片不能超过 5MB',
     avatarUpdated: '头像已更新',

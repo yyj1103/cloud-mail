@@ -100,6 +100,19 @@
         </template>
       </el-dropdown>
     </div>
+    <el-dialog v-model="cropVisible" :title="t('avatarCrop')" width="340" align-center :close-on-click-modal="false" @closed="onCropClosed">
+      <div ref="cropAreaRef" class="crop-area" @pointerdown="onCropPointerDown">
+        <img v-if="cropImgUrl" ref="cropImgRef" :src="cropImgUrl" class="crop-img" :style="cropImgStyle" draggable="false" @load="onCropImgLoad">
+      </div>
+      <div class="crop-zoom">
+        <span class="crop-zoom-label">{{ t('avatarCropZoom') }}</span>
+        <input type="range" min="1" max="3" step="0.01" v-model.number="cropZoom" class="crop-slider" @input="onCropZoomInput">
+      </div>
+      <template #footer>
+        <el-button @click="cropVisible = false">{{ t('cancel') }}</el-button>
+        <el-button type="primary" :loading="cropConfirmLoading" @click="confirmCrop">{{ t('confirm') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -132,6 +145,16 @@ const sendStore = useSendStore()
 const logoutLoading = ref(false)
 const userDropdownRef = ref(null)
 const avatarInput = ref(null)
+const cropVisible = ref(false)
+const cropImgUrl = ref('')
+const cropImgRef = ref(null)
+const cropAreaRef = ref(null)
+const cropZoom = ref(1)
+const cropOffset = ref({x: 0, y: 0})
+const cropImgSize = ref({w: 0, h: 0})
+const cropConfirmLoading = ref(false)
+let cropDrag = null
+let cropObjectUrl = ''
 const userCardVisible = ref(false)
 const outsidePointerEvents = ['mousedown', 'pointerup', 'mouseup', 'click', 'pointercancel']
 let blockOutsideClick = false
@@ -281,23 +304,106 @@ function readFileAsDataURL(file) {
   })
 }
 
-function compressAvatar(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      // 裁成正方形：竖图取顶部（留住人脸），横图取中间
-      const side = Math.min(img.width, img.height)
-      const sx = (img.width - side) / 2
-      const canvas = document.createElement('canvas')
-      canvas.width = 512
-      canvas.height = 512
-      canvas.getContext('2d').drawImage(img, sx, 0, side, side, 0, 0, 512, 512)
-      URL.revokeObjectURL(url)
-      resolve(canvas.toDataURL('image/jpeg', 0.85))
-    }
-    img.onerror = reject
-    img.src = url
+// 裁剪框里看到的正方形，就是最终头像的范围：图片按缩放比例显示，
+// 居中后再按 cropOffset 平移；确认时把框内区域画到 512×512 的 canvas 上
+const cropImgStyle = computed(() => {
+  const area = cropAreaRef.value?.clientWidth || 280
+  const {w, h} = cropImgSize.value
+  if (!w || !h) return {}
+  const k = cropZoom.value * (area / Math.min(w, h))
+  return {
+    width: w * k + 'px',
+    height: h * k + 'px',
+    transform: `translate(-50%, -50%) translate(${cropOffset.value.x}px, ${cropOffset.value.y}px)`
+  }
+})
+
+function clampCropOffset() {
+  const area = cropAreaRef.value?.clientWidth || 280
+  const {w, h} = cropImgSize.value
+  if (!w || !h) return
+  const k = cropZoom.value * (area / Math.min(w, h))
+  const maxX = Math.max(0, (w * k - area) / 2)
+  const maxY = Math.max(0, (h * k - area) / 2)
+  cropOffset.value.x = Math.min(maxX, Math.max(-maxX, cropOffset.value.x))
+  cropOffset.value.y = Math.min(maxY, Math.max(-maxY, cropOffset.value.y))
+}
+
+function onCropImgLoad() {
+  const img = cropImgRef.value
+  if (!img) return
+  cropImgSize.value = {w: img.naturalWidth, h: img.naturalHeight}
+  cropZoom.value = 1
+  cropOffset.value = {x: 0, y: 0}
+}
+
+function onCropZoomInput() {
+  clampCropOffset()
+}
+
+function onCropPointerDown(event) {
+  if (!cropImgUrl.value) return
+  event.preventDefault()
+  cropDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    offsetX: cropOffset.value.x,
+    offsetY: cropOffset.value.y
+  }
+  window.addEventListener('pointermove', onCropPointerMove)
+  window.addEventListener('pointerup', onCropPointerUp)
+  window.addEventListener('pointercancel', onCropPointerUp)
+}
+
+function onCropPointerMove(event) {
+  if (!cropDrag || event.pointerId !== cropDrag.pointerId) return
+  cropOffset.value.x = cropDrag.offsetX + (event.clientX - cropDrag.startX)
+  cropOffset.value.y = cropDrag.offsetY + (event.clientY - cropDrag.startY)
+  clampCropOffset()
+}
+
+function onCropPointerUp() {
+  cropDrag = null
+  window.removeEventListener('pointermove', onCropPointerMove)
+  window.removeEventListener('pointerup', onCropPointerUp)
+  window.removeEventListener('pointercancel', onCropPointerUp)
+}
+
+function onCropClosed() {
+  if (cropObjectUrl) {
+    URL.revokeObjectURL(cropObjectUrl)
+    cropObjectUrl = ''
+  }
+  cropImgUrl.value = ''
+  cropDrag = null
+  window.removeEventListener('pointermove', onCropPointerMove)
+  window.removeEventListener('pointerup', onCropPointerUp)
+  window.removeEventListener('pointercancel', onCropPointerUp)
+}
+
+function confirmCrop() {
+  const img = cropImgRef.value
+  const area = cropAreaRef.value?.clientWidth || 280
+  const {w, h} = cropImgSize.value
+  if (!img || !w || !h) return
+  const k = cropZoom.value * (area / Math.min(w, h))
+  const x0 = (area - w * k) / 2 + cropOffset.value.x
+  const y0 = (area - h * k) / 2 + cropOffset.value.y
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  canvas.getContext('2d').drawImage(img, -x0 / k, -y0 / k, area / k, area / k, 0, 0, 512, 512)
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+  cropConfirmLoading.value = true
+  setAvatar(dataUrl).then(() => {
+    userStore.user.avatar = dataUrl
+    ElMessage({message: t('avatarUpdated'), type: 'success', plain: true})
+    cropVisible.value = false
+  }).catch(() => {
+    // 服务端错误已由请求拦截器提示
+  }).finally(() => {
+    cropConfirmLoading.value = false
   })
 }
 
@@ -320,8 +426,15 @@ function onAvatarFile(event) {
         }
         dataUrl = await readFileAsDataURL(file)
       } else {
-        // 静态图多大都能换：自动裁成 512 正方形再上传
-        dataUrl = await compressAvatar(file)
+        // 静态图：先弹出裁剪框，用户自己选范围再上传；上传在裁剪框点确定时做
+        if (cropObjectUrl) URL.revokeObjectURL(cropObjectUrl)
+        cropObjectUrl = URL.createObjectURL(file)
+        cropImgUrl.value = cropObjectUrl
+        cropZoom.value = 1
+        cropOffset.value = {x: 0, y: 0}
+        cropImgSize.value = {w: 0, h: 0}
+        cropVisible.value = true
+        return
       }
       await setAvatar(dataUrl)
       userStore.user.avatar = dataUrl
@@ -625,6 +738,50 @@ onBeforeUnmount(() => {
     }
   }
 
+}
+
+.crop-area {
+  position: relative;
+  width: min(78vw, 300px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #000;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.crop-area:active {
+  cursor: grabbing;
+}
+
+.crop-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  max-height: none;
+  pointer-events: none;
+}
+
+.crop-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.crop-zoom-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+
+.crop-slider {
+  flex: 1;
+  accent-color: var(--el-color-primary);
 }
 
 .el-tooltip__trigger:first-child:focus-visible {

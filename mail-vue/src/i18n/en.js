@@ -24,6 +24,8 @@ const en = {
     dmImagePrivacyTip: 'Only the photo you pick is read. Your album is never accessed.',
     avatarChange: 'Change avatar',
     avatarPrivacyTip: 'Only the photo you pick is read. Your album is never accessed.',
+    avatarCrop: 'Crop avatar',
+    avatarCropZoom: 'Zoom',
     avatarInvalidType: 'Please choose a JPG, PNG or GIF image',
     avatarTooLarge: 'Image cannot exceed 5MB',
     avatarUpdated: 'Avatar updated',

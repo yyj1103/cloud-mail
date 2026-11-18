@@ -84,7 +84,7 @@
       <template v-if="currentFriend">
         <div class="chat-header">
           <el-button v-if="isMobile" class="back-btn" link @click="mobileChat = false">&lt; {{ $t('dmFriends') }}</el-button>
-          <img v-if="currentFriend.avatar" class="avatar-img" :src="currentFriend.avatar" alt="">
+          <img v-if="currentFriend.avatar" class="avatar-img friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
           <div v-else class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
           <div class="chat-title">
             <div class="chat-name">{{ currentFriend.name }}</div>
@@ -108,7 +108,7 @@
                 class="message-row"
                 :class="{ mine: msg.senderUserId === userStore.user.userId }"
             >
-              <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar" :src="currentFriend.avatar" alt="">
+              <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
               <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
               <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="[msg.content]" fit="cover" @contextmenu.prevent="askRecallMessage(msg)" />
               <div v-else class="message-bubble" @contextmenu.prevent="askRecallMessage(msg)">
@@ -145,6 +145,9 @@
       </template>
       <el-empty v-else :description="$t('dmSelectFriend')" />
     </div>
+    <el-dialog v-model="showFriendAvatar" :title="currentFriend?.name || currentFriend?.email" width="320" align-center>
+      <img v-if="currentFriend?.avatar" :src="currentFriend.avatar" class="avatar-preview-img" alt="">
+    </el-dialog>
   </div>
 </template>
 
@@ -188,6 +191,7 @@ const msgScrollRef = ref(null)
 const msgPage = ref(1)
 const hasMore = ref(false)
 const mobileChat = ref(false)
+const showFriendAvatar = ref(false)
 const isMobile = computed(() => window.innerWidth < 768)
 const mailDomain = computed(() => userStore.user.email?.split('@')[1] || 'qixuan.ccwu.cc')
 
@@ -599,6 +603,17 @@ defineOptions({
 
 .msg-avatar.letter-avatar {
   font-size: 14px;
+}
+
+.friend-avatar {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.avatar-preview-img {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
 }
 
 .dm-main {
