@@ -63,6 +63,7 @@
     <div class="preference-item">
       <div class="title">{{$t('addToHomeScreen')}}</div>
       <div class="install-tip">{{$t('addToHomeScreenTip')}}</div>
+      <div class="install-tip install-chrome-note">{{$t('addToHomeScreenChromeNote')}}</div>
       <div>
         <el-button type="primary" :disabled="isInstalled" @click="handleInstall">{{ isInstalled ? $t('addedToHomeScreen') : $t('addToHomeScreen') }}</el-button>
       </div>
@@ -95,7 +96,7 @@
   </div>
 </template>
 <script setup>
-import {reactive, ref, defineOptions, onMounted, onUnmounted} from 'vue'
+import {reactive, ref, defineOptions, onMounted, onUnmounted, h} from 'vue'
 import {resetPassword, userDelete} from "@/request/my.js";
 import {useUserStore} from "@/store/user.js";
 import router from "@/router/index.js";
@@ -105,7 +106,7 @@ import {useI18n} from "vue-i18n";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
 import ThemeSelector from "@/components/theme-selector/index.vue";
-import { isInstalled, isIos, promptInstall } from "@/utils/pwa-install.js";
+import { isInstalled, isIos, isChrome, promptInstall } from "@/utils/pwa-install.js";
 
 const { t } = useI18n()
 const accountStore = useAccountStore()
@@ -206,13 +207,16 @@ async function handleFullscreen() {
 }
 
 // 添加到主屏幕：有原生安装事件（安卓 Chrome）就弹安装框；
-// 没有（iPhone 或浏览器不支持）就按设备给手动步骤；已全屏打开时按钮是禁用的
+// 没有（iPhone 或浏览器不支持）就按设备给手动步骤；不是 Chrome 时先提醒换 Chrome
 async function handleInstall() {
   if (isInstalled.value) return
   const outcome = await promptInstall()
   if (outcome) return
   const steps = isIos() ? t('installStepsIos') : t('installStepsAndroid')
-  ElMessageBox.alert(steps, t('addToHomeScreen'), { confirmButtonText: t('confirm') })
+  const message = isChrome()
+    ? steps
+    : h('div', [h('p', t('installStepsChromeFirst')), h('p', steps)])
+  ElMessageBox.alert(message, t('addToHomeScreen'), { confirmButtonText: t('confirm') })
 }
 
 const pwdShow = ref(false)
@@ -398,6 +402,10 @@ function submitPwd() {
   .install-tip {
     font-size: 13px;
     color: var(--el-text-color-secondary);
+  }
+
+  .install-chrome-note {
+    color: var(--el-color-warning);
   }
 
   .fs-unsupported {

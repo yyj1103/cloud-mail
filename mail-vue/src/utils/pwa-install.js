@@ -13,6 +13,12 @@ export function isIos() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent)
 }
 
+// 是否谷歌浏览器：UA 带 Chrome/CriOS，且不是 Edge、Opera、三星、UC、Vivo 等套壳浏览器
+export function isChrome() {
+  const ua = window.navigator.userAgent
+  return /Chrome\/\d|CriOS\/\d/i.test(ua) && !/Edg\/|EdgA\/|OPR\/|SamsungBrowser\/|YaBrowser\/|UCBrowser\/|VivoBrowser\/|HeyTapBrowser\/|MiuiBrowser\//i.test(ua)
+}
+
 export function initInstallPromptListener() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault()
