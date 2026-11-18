@@ -220,11 +220,9 @@ import { tzDayjs } from "@/utils/day.js";
 import {
   searchUser,
   sendFriendRequest,
-  listFriendRequests,
   respondFriendRequest,
   removeFriend,
   sendMessage,
-  listConversations,
   listMessages,
   deleteMessage,
   editMessage
@@ -478,40 +476,18 @@ function scrollToBottom() {
   })
 }
 
-const avatarCache = new Map()
-
-function knownAvatarVers() {
-  const vers = {}
-  avatarCache.forEach((v, k) => { vers[k] = v.ver })
-  return vers
-}
-
-function fillAvatars(items) {
-  for (const it of items || []) {
-    if (!it || it.userId == null) continue
-    if (it.avatar) {
-      avatarCache.set(it.userId, { ver: it.avatarVer || '', data: it.avatar })
-      continue
-    }
-    const cached = avatarCache.get(it.userId)
-    if (cached && it.avatarVer && cached.ver === it.avatarVer) {
-      it.avatar = cached.data
-    }
-  }
-}
-
 async function refreshAll() {
   conversationsLoading.value = true
   try {
-    const vers = knownAvatarVers()
+    // 会话和申请都缓存在 dm store 里：refreshAll 每次都刷新 store，
+    // 页面挂载时先画缓存（见 onMounted），所以这里即使 loading 为 true，
+    // 有缓存时模板也不会再显示“加载中…”
     const [convs, reqs] = await Promise.all([
-      listConversations(vers).catch(() => []),
-      listFriendRequests(vers).catch(() => ({ incoming: [], outgoing: [] }))
+      dmStore.loadConversations(),
+      dmStore.loadRequests()
     ])
-    fillAvatars(convs)
-    fillAvatars(reqs?.incoming)
     conversations.value = convs || []
-    incomingRequests.value = reqs?.incoming || []
+    incomingRequests.value = reqs || []
     if (currentFriend.value) {
       const updated = conversations.value.find(cv => cv.userId === currentFriend.value.userId)
       if (updated) currentFriend.value = updated
@@ -807,6 +783,12 @@ watch(mobileChat, (v) => {
 })
 
 onMounted(async () => {
+  // 缓存优先：先画上次的会话和申请，后台再刷新；只有第一次打开、缓存为空时
+  // refreshAll 才会让模板显示“加载中…”
+  if (dmStore.conversationsLoaded) {
+    conversations.value = dmStore.conversations
+    incomingRequests.value = dmStore.incomingRequests
+  }
   await refreshAll()
   // 从联系人页点进来的好友：直接打开与该好友的会话
   if (dmStore.pendingFriend) {

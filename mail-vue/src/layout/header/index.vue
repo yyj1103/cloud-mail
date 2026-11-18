@@ -4,6 +4,9 @@
       <hanburger @click="changeAside"></hanburger>
       <!-- 手机端品牌名：Telegram 图里左上角的“Telegram”对应位置，手机端显示“七玄Mail” -->
       <span class="brand-name">七玄Mail</span>
+      <!-- 全屏时钟：只在全屏时显示。安卓浏览器进全屏（requestFullscreen）是沉浸式，
+           系统状态栏（包括时间）整个被藏起来，页面样式叫不回状态栏，所以全屏时在顶栏放一个实时时钟 -->
+      <span v-if="isFullscreen" class="fs-clock">{{ clockText }}</span>
       <span class="breadcrumb-item">{{ $t(route.meta.title) }}</span>
     </div>
     <div v-perm="'email:send'" class="writer-box">
@@ -160,6 +163,51 @@ let cropObjectUrl = ''
 const userCardVisible = ref(false)
 const outsidePointerEvents = ['mousedown', 'pointerup', 'mouseup', 'click', 'pointercancel']
 let blockOutsideClick = false
+
+// 全屏时钟：安卓浏览器进全屏（requestFullscreen）是沉浸式，系统状态栏（包括时间）
+// 整个被藏起来，这是浏览器全屏本身的行为，页面改样式叫不回状态栏；
+// 所以全屏时在顶栏放一个实时时钟（时:分），普通模式下不出现、不占地方。
+const isFullscreen = ref(false)
+const clockText = ref('')
+let clockTimer = null
+let clockTimeout = null
+
+function tickClock() {
+  const now = new Date()
+  clockText.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0')
+}
+
+function stopClock() {
+  if (clockTimeout) {
+    clearTimeout(clockTimeout)
+    clockTimeout = null
+  }
+  if (clockTimer) {
+    clearInterval(clockTimer)
+    clockTimer = null
+  }
+}
+
+function startClock() {
+  stopClock()
+  tickClock()
+  // 对齐到下一分钟的开头再每分钟更新一次，时间不会慢半拍
+  const now = new Date()
+  const delay = (60 - now.getSeconds()) * 1000 - now.getMilliseconds()
+  clockTimeout = setTimeout(() => {
+    tickClock()
+    clockTimer = setInterval(tickClock, 60000)
+  }, delay)
+}
+
+function onFullscreenChange() {
+  isFullscreen.value = !!(document.fullscreenElement || document.webkitFullscreenElement)
+  if (isFullscreen.value) {
+    startClock()
+  } else {
+    stopClock()
+  }
+}
 const inboxSearchOptions = computed(() => [
   {label: t('subject'), type: 'subject'},
   {label: t('searchSummaryContent'), type: 'content'},
@@ -479,6 +527,10 @@ onMounted(() => {
   outsidePointerEvents.forEach(type => {
     document.addEventListener(type, handleUserCardPointerEvent, true)
   })
+  // 全屏时钟：刷新页面时如果已经在全屏，时钟也要立刻出现
+  onFullscreenChange()
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange)
 })
 
 // 手机端底部导航“我的”：打开右上角现有的头像/账号卡
@@ -491,6 +543,9 @@ onBeforeUnmount(() => {
   outsidePointerEvents.forEach(type => {
     document.removeEventListener(type, handleUserCardPointerEvent, true)
   })
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
+  stopClock()
 })
 
 </script>
@@ -684,6 +739,16 @@ onBeforeUnmount(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+// 全屏时钟：只在全屏时渲染（v-if），普通模式下不出现、不占地方；
+// 放在品牌名旁边，字号比品牌名小一号，颜色和顶栏文字一致
+.fs-clock {
+  margin-left: 8px;
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
 }
 
 // 手机端品牌名：默认（电脑端）不显示

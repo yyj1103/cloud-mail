@@ -72,7 +72,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import { ElMessage } from 'element-plus'
-import { searchUser, sendFriendRequest, listFriendRequests, respondFriendRequest, listFriends } from '@/request/dm.js'
+import { searchUser, sendFriendRequest, respondFriendRequest } from '@/request/dm.js'
 import { useDmStore } from '@/store/dm.js'
 import { useSettingStore } from '@/store/setting.js'
 
@@ -86,8 +86,9 @@ const searching = ref(false)
 const searchResult = ref(null)
 // none：可添加；sent：已发送请求；friend：已是好友
 const searchStatus = ref('none')
-const incomingRequests = ref([])
-const friends = ref([])
+// 好友和好友申请缓存在 dm store 里：离开页面不清空，再进页先画缓存、后台悄悄刷新
+const incomingRequests = computed(() => dmStore.incomingRequests)
+const friends = computed(() => dmStore.friends)
 const loading = ref(false)
 
 const addFriendLabel = computed(() => {
@@ -149,17 +150,22 @@ async function respond(id, accept) {
 
 async function loadRequests() {
   try {
-    const data = await listFriendRequests()
-    incomingRequests.value = data?.incoming || []
+    await dmStore.loadRequests()
   } catch (e) {
     // 服务端错误已由请求拦截器提示
   }
 }
 
 async function loadFriends() {
+  if (dmStore.friendsLoaded) {
+    // 有缓存：页面已经画出上次的好友了，后台悄悄刷新，不显示“加载中…”；
+    // 调用方 await 时等刷新完成再返回（比如通过好友申请后要立刻看到新好友）
+    return dmStore.loadFriends().catch(() => {})
+  }
+  // 只有第一次打开、缓存为空时才显示“加载中…”
   loading.value = true
   try {
-    friends.value = await listFriends() || []
+    await dmStore.loadFriends()
   } catch (e) {
     // 服务端错误已由请求拦截器提示
   } finally {
