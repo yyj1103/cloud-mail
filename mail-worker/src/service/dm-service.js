@@ -4,7 +4,7 @@ import user from '../entity/user';
 import account from '../entity/account';
 import { friend } from '../entity/friend';
 import { privateMessage } from '../entity/private-message';
-import { and, or, asc, desc, count, eq, inArray } from 'drizzle-orm';
+import { and, or, asc, desc, count, eq, gt, inArray } from 'drizzle-orm';
 import { isDel } from '../const/entity-const';
 import kvConst from '../const/kv-const';
 import dayjs from 'dayjs';
@@ -111,7 +111,7 @@ const dmService = {
 		await orm(c).insert(friend).values({ userId, friendUserId: target.userId, status: friendStatus.PENDING }).run();
 	},
 
-	async listRequests(c, userId) {
+	async listRequests(c, params, userId) {
 		const incoming = await orm(c).select().from(friend).where(
 			and(eq(friend.friendUserId, userId), eq(friend.status, friendStatus.PENDING)))
 			.orderBy(desc(friend.friendId)).all();
@@ -120,7 +120,7 @@ const dmService = {
 			.orderBy(desc(friend.friendId)).all();
 
 		const ids = [...new Set([...incoming.map(r => r.userId), ...outgoing.map(r => r.friendUserId)])];
-		const infoMap = await this.userInfoMap(c, ids);
+		const infoMap = await this.userInfoMap(c, ids, this.parseAvatarVers(params));
 
 		return {
 			incoming: incoming.map(r => ({ ...r, ...infoMap[r.userId] })),
@@ -143,7 +143,7 @@ const dmService = {
 		}).where(eq(friend.friendId, friendId)).run();
 	},
 
-	async listFriends(c, userId) {
+	async listFriends(c, userId, knownVers = {}) {
 		const rows = await orm(c).select().from(friend).where(
 			and(eq(friend.status, friendStatus.ACCEPTED),
 				or(eq(friend.userId, userId), eq(friend.friendUserId, userId))))
@@ -155,12 +155,29 @@ const dmService = {
 			return [];
 		}
 
-		const infoMap = await this.userInfoMap(c, friendIds);
+		const infoMap = await this.userInfoMap(c, friendIds, knownVers);
 
 		return friendIds.map(id => ({ userId: id, ...infoMap[id] }));
 	},
 
-	async userInfoMap(c, userIds) {
+	async avatarVer(avatar) {
+		if (!avatar) {
+			return '';
+		}
+		const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(avatar));
+		return [...new Uint8Array(digest)].slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+	},
+
+	parseAvatarVers(params) {
+		try {
+			const vers = params && params.avatarVers ? JSON.parse(params.avatarVers) : {};
+			return vers && typeof vers === 'object' ? vers : {};
+		} catch (e) {
+			return {};
+		}
+	},
+
+	async userInfoMap(c, userIds, knownVers = {}) {
 		if (!userIds.length) {
 			return {};
 		}
@@ -172,11 +189,19 @@ const dmService = {
 
 		const accountMap = Object.fromEntries(accounts.map(a => [a.userId, a]));
 
-		return Object.fromEntries(users.map(u => [u.userId, {
-			email: u.email,
-			avatar: u.avatar || '',
-			name: accountMap[u.userId]?.name || emailUtils.getName(u.email)
-		}]));
+		const entries = await Promise.all(users.map(async u => {
+			const avatar = u.avatar || '';
+			const ver = await this.avatarVer(avatar);
+			return [u.userId, {
+				email: u.email,
+				// 前端已缓存同一版本头像时不再重复下发整张图
+				avatar: knownVers[u.userId] && knownVers[u.userId] === ver ? '' : avatar,
+				avatarVer: ver,
+				name: accountMap[u.userId]?.name || emailUtils.getName(u.email)
+			}];
+		}));
+
+		return Object.fromEntries(entries);
 	},
 
 	async removeFriend(c, params, userId) {
@@ -242,28 +267,57 @@ const dmService = {
 		return messageId;
 	},
 
-	async listConversations(c, userId) {
-		const friends = await this.listFriends(c, userId);
-		const result = [];
+	async listConversations(c, params, userId) {
+		const friends = await this.listFriends(c, userId, this.parseAvatarVers(params));
 
-		for (const f of friends) {
-			const last = await orm(c).select().from(privateMessage).where(
-				and(eq(privateMessage.isDel, isDel.NORMAL),
-					or(
-						and(eq(privateMessage.senderUserId, userId), eq(privateMessage.receiverUserId, f.userId)),
-						and(eq(privateMessage.senderUserId, f.userId), eq(privateMessage.receiverUserId, userId))
-					))).orderBy(desc(privateMessage.messageId)).limit(1).get();
-
-			const { total } = await orm(c).select({ total: count() }).from(privateMessage).where(
-				and(
-					eq(privateMessage.receiverUserId, userId),
-					eq(privateMessage.senderUserId, f.userId),
-					eq(privateMessage.isRead, 0),
-					eq(privateMessage.isDel, isDel.NORMAL)
-				)).get();
-
-			result.push({ ...f, lastMessage: last || null, unread: total || 0 });
+		if (!friends.length) {
+			return [];
 		}
+
+		const friendIds = friends.map(f => f.userId);
+		const placeholders = friendIds.map(() => '?').join(',');
+
+		// 每位好友的最后一条消息一次查出：只带 100 字以内的文字预览，图片不带原内容
+		const lastRows = await c.env.db.prepare(
+			`SELECT message_id, sender_user_id, receiver_user_id, type, create_time,
+				CASE WHEN type = 1 THEN NULL ELSE substr(content, 1, 100) END AS content
+			FROM private_message
+			WHERE is_del = 0 AND message_id IN (
+				SELECT MAX(message_id) FROM private_message
+				WHERE is_del = 0
+					AND ((sender_user_id = ? AND receiver_user_id IN (${placeholders}))
+						OR (receiver_user_id = ? AND sender_user_id IN (${placeholders})))
+				GROUP BY CASE WHEN sender_user_id = ? THEN receiver_user_id ELSE sender_user_id END
+			)`
+		).bind(userId, ...friendIds, userId, ...friendIds, userId).all();
+
+		const lastMap = {};
+		for (const row of lastRows.results || []) {
+			const peer = row.sender_user_id === userId ? row.receiver_user_id : row.sender_user_id;
+			lastMap[peer] = {
+				messageId: row.message_id,
+				senderUserId: row.sender_user_id,
+				receiverUserId: row.receiver_user_id,
+				type: row.type,
+				createTime: row.create_time,
+				content: row.content
+			};
+		}
+
+		// 未读数一次聚合查出，不再每人查一次
+		const unreadRows = await c.env.db.prepare(
+			`SELECT sender_user_id, COUNT(*) AS total FROM private_message
+			WHERE receiver_user_id = ? AND is_read = 0 AND is_del = 0
+				AND sender_user_id IN (${placeholders})
+			GROUP BY sender_user_id`
+		).bind(userId, ...friendIds).all();
+
+		const unreadMap = {};
+		for (const row of unreadRows.results || []) {
+			unreadMap[row.sender_user_id] = row.total || 0;
+		}
+
+		const result = friends.map(f => ({ ...f, lastMessage: lastMap[f.userId] || null, unread: unreadMap[f.userId] || 0 }));
 
 		result.sort((a, b) => {
 			const ta = a.lastMessage?.createTime || '';
@@ -274,12 +328,14 @@ const dmService = {
 		return result;
 	},
 
+
 	async listMessages(c, params, userId) {
-		let { friendUserId, num, size } = params;
+		let { friendUserId, num, size, after } = params;
 
 		friendUserId = Number(friendUserId);
 		size = Number(size);
 		num = Number(num);
+		after = Number(after);
 
 		if (isNaN(size) || size <= 0) {
 			size = 30;
@@ -297,22 +353,43 @@ const dmService = {
 			throw new BizError(t('notFriend'));
 		}
 
-		const list = await orm(c).select().from(privateMessage).where(
-			and(eq(privateMessage.isDel, isDel.NORMAL),
-				or(
-					and(eq(privateMessage.senderUserId, userId), eq(privateMessage.receiverUserId, friendUserId)),
-					and(eq(privateMessage.senderUserId, friendUserId), eq(privateMessage.receiverUserId, userId))
-				))).orderBy(desc(privateMessage.messageId)).limit(size).offset((num - 1) * size).all();
+		const pairFilter = or(
+			and(eq(privateMessage.senderUserId, userId), eq(privateMessage.receiverUserId, friendUserId)),
+			and(eq(privateMessage.senderUserId, friendUserId), eq(privateMessage.receiverUserId, userId))
+		);
 
-		await orm(c).update(privateMessage).set({ isRead: 1 }).where(
+		const markRead = () => orm(c).update(privateMessage).set({ isRead: 1 }).where(
 			and(
 				eq(privateMessage.receiverUserId, userId),
 				eq(privateMessage.senderUserId, friendUserId),
 				eq(privateMessage.isRead, 0)
 			)).run();
 
+		// 增量拉取：轮询时只取比 after 新的消息，不再整页重下（图片 base64 不再每 10 秒重传一次）
+		// 顺带返回当前可见的消息 id 列表，前端用它发现对方撤回的消息并本地去掉
+		if (!isNaN(after) && after > 0) {
+			const list = await orm(c).select().from(privateMessage).where(
+				and(eq(privateMessage.isDel, isDel.NORMAL), gt(privateMessage.messageId, after), pairFilter)
+			).orderBy(asc(privateMessage.messageId)).limit(size).all();
+
+			const idRows = await orm(c).select({ messageId: privateMessage.messageId }).from(privateMessage).where(
+				and(eq(privateMessage.isDel, isDel.NORMAL), pairFilter)
+			).orderBy(desc(privateMessage.messageId)).limit(500).all();
+
+			await markRead();
+
+			return { list, ids: idRows.map(r => r.messageId) };
+		}
+
+		const list = await orm(c).select().from(privateMessage).where(
+			and(eq(privateMessage.isDel, isDel.NORMAL), pairFilter)
+		).orderBy(desc(privateMessage.messageId)).limit(size).offset((num - 1) * size).all();
+
+		await markRead();
+
 		return list.reverse();
 	},
+
 
 	async unreadCount(c, userId) {
 		const { total } = await orm(c).select({ total: count() }).from(privateMessage).where(

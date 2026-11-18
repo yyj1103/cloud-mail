@@ -14,7 +14,7 @@ app.post('/dm/friend/request', async (c) => {
 });
 
 app.get('/dm/friend/requests', async (c) => {
-	const data = await dmService.listRequests(c, userContext.getUserId(c));
+	const data = await dmService.listRequests(c, c.req.query(), userContext.getUserId(c));
 	return c.json(result.ok(data));
 });
 
@@ -39,7 +39,7 @@ app.post('/dm/message', async (c) => {
 });
 
 app.get('/dm/conversations', async (c) => {
-	const data = await dmService.listConversations(c, userContext.getUserId(c));
+	const data = await dmService.listConversations(c, c.req.query(), userContext.getUserId(c));
 	return c.json(result.ok(data));
 });
 

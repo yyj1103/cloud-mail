@@ -18,6 +18,7 @@ const en = {
     dmRemoveFriend: 'Remove friend',
     dmRemoveConfirm: 'Remove this friend? They will no longer be able to send you messages',
     dmLoadMore: 'Load more',
+    dmLoading: 'Loading…',
     dmTypeMessage: 'Type a message…',
     dmRequestSentMsg: 'Friend request sent',
     dmRecallMessageConfirm: 'Once recalled, neither of you will see this message. Recall it?',

@@ -58,6 +58,7 @@
       </div>
 
       <el-scrollbar class="conversation-list">
+        <div v-if="conversationsLoading && !conversations.length && !incomingRequests.length" class="loading-tip">{{ $t('dmLoading') }}</div>
         <div
             v-for="conv in conversations"
             :key="conv.userId"
@@ -76,7 +77,7 @@
             <el-badge v-if="conv.unread > 0" :value="conv.unread" :max="99" class="conv-badge" />
           </div>
         </div>
-        <el-empty v-if="!conversations.length && !incomingRequests.length" :description="$t('dmNoFriends')" />
+        <el-empty v-if="!conversationsLoading && !conversations.length && !incomingRequests.length" :description="$t('dmNoFriends')" />
       </el-scrollbar>
     </div>
 
@@ -99,6 +100,7 @@
           </el-dropdown>
         </div>
         <el-scrollbar ref="msgScrollRef" class="message-list">
+          <div v-if="messagesLoading && !messages.length" class="loading-tip">{{ $t('dmLoading') }}</div>
           <div v-if="hasMore" class="load-more">
             <el-button link @click="loadMore">{{ $t('dmLoadMore') }}</el-button>
           </div>
@@ -179,8 +181,10 @@ const searchResult = ref(null)
 const requestLoading = ref(false)
 const incomingRequests = ref([])
 const conversations = ref([])
+const conversationsLoading = ref(false)
 const currentFriend = ref(null)
 const messages = ref([])
+const messagesLoading = ref(false)
 const inputContent = ref('')
 const sendLoading = ref(false)
 const emojiShow = ref(false)
@@ -240,14 +244,48 @@ function scrollToBottom() {
   })
 }
 
+const avatarCache = new Map()
+
+function knownAvatarVers() {
+  const vers = {}
+  avatarCache.forEach((v, k) => { vers[k] = v.ver })
+  return vers
+}
+
+function fillAvatars(items) {
+  for (const it of items || []) {
+    if (!it || it.userId == null) continue
+    if (it.avatar) {
+      avatarCache.set(it.userId, { ver: it.avatarVer || '', data: it.avatar })
+      continue
+    }
+    const cached = avatarCache.get(it.userId)
+    if (cached && it.avatarVer && cached.ver === it.avatarVer) {
+      it.avatar = cached.data
+    }
+  }
+}
+
 async function refreshAll() {
-  const [convs, reqs] = await Promise.all([
-    listConversations().catch(() => []),
-    listFriendRequests().catch(() => ({ incoming: [], outgoing: [] }))
-  ])
-  conversations.value = convs || []
-  incomingRequests.value = reqs?.incoming || []
-  dmStore.refreshUnread()
+  conversationsLoading.value = true
+  try {
+    const vers = knownAvatarVers()
+    const [convs, reqs] = await Promise.all([
+      listConversations(vers).catch(() => []),
+      listFriendRequests(vers).catch(() => ({ incoming: [], outgoing: [] }))
+    ])
+    fillAvatars(convs)
+    fillAvatars(reqs?.incoming)
+    conversations.value = convs || []
+    incomingRequests.value = reqs?.incoming || []
+    if (currentFriend.value) {
+      const updated = conversations.value.find(cv => cv.userId === currentFriend.value.userId)
+      if (updated) currentFriend.value = updated
+    }
+    dmStore.refreshUnread()
+  } finally {
+    conversationsLoading.value = false
+  }
 }
 
 async function doSearch() {
@@ -309,15 +347,49 @@ async function openConversation(conv) {
 
 async function loadMessages(reset, scroll) {
   if (!currentFriend.value) return
-  const list = await listMessages(currentFriend.value.userId, msgPage.value, 30)
-  if (reset) {
-    messages.value = list || []
-  } else {
-    messages.value = [...(list || []), ...messages.value]
+  messagesLoading.value = true
+  try {
+    const list = await listMessages(currentFriend.value.userId, msgPage.value, 30)
+    if (reset) {
+      messages.value = list || []
+    } else {
+      messages.value = [...(list || []), ...messages.value]
+    }
+    hasMore.value = (list || []).length >= 30
+    if (scroll) {
+      scrollToBottom()
+    }
+  } finally {
+    messagesLoading.value = false
   }
-  hasMore.value = (list || []).length >= 30
-  if (scroll) {
-    scrollToBottom()
+}
+
+async function pollMessages() {
+  if (!currentFriend.value) return
+  if (!messages.value.length) {
+    await loadMessages(true, false)
+    return
+  }
+  const lastId = messages.value[messages.value.length - 1].messageId
+  const res = await listMessages(currentFriend.value.userId, 1, 30, lastId)
+  if (!res) return
+  if (Array.isArray(res)) {
+    messages.value = res
+    return
+  }
+  const { list, ids } = res
+  if (Array.isArray(ids)) {
+    const idSet = new Set(ids)
+    const minId = ids.length ? Math.min(...ids) : Infinity
+    // 对方撤回的消息在服务端已不可见，本地同步去掉（早于可见窗口的老消息不动）
+    messages.value = messages.value.filter(m => idSet.has(m.messageId) || m.messageId < minId)
+  }
+  if (list && list.length) {
+    const existing = new Set(messages.value.map(m => m.messageId))
+    const fresh = list.filter(m => !existing.has(m.messageId))
+    if (fresh.length) {
+      messages.value = [...messages.value, ...fresh]
+    }
   }
 }
 
@@ -427,7 +499,7 @@ onMounted(async () => {
     await refreshAll()
     if (currentFriend.value) {
       const nearBottom = isNearBottom()
-      await loadMessages(true, false)
+      await pollMessages()
       if (nearBottom) {
         scrollToBottom()
       }
@@ -516,6 +588,13 @@ defineOptions({
 .conversation-list {
   flex: 1;
   min-height: 0;
+}
+
+.loading-tip {
+  text-align: center;
+  padding: 16px 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 
 .conversation-item {

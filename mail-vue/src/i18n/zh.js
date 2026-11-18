@@ -18,6 +18,7 @@ const zh = {
     dmRemoveFriend: '删除好友',
     dmRemoveConfirm: '确定删除这位好友吗？删除后对方将不能再给你发私信',
     dmLoadMore: '加载更多',
+    dmLoading: '加载中…',
     dmTypeMessage: '输入消息…',
     dmRequestSentMsg: '好友请求已发送',
     dmRecallMessageConfirm: '撤回后，双方都看不到这条消息。确定撤回吗？',
