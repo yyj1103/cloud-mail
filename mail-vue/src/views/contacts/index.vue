@@ -33,15 +33,15 @@
       <!-- 好友申请 -->
       <div v-if="incomingRequests.length" class="section">
         <div class="section-title">{{ t('dmFriendRequests') }}</div>
-        <div v-for="req in incomingRequests" :key="req.id" class="result-row">
+        <div v-for="req in incomingRequests" :key="req.friendId" class="result-row">
           <el-avatar :size="52" :src="req.avatar || undefined" class="row-avatar">{{ avatarText(req) }}</el-avatar>
           <div class="row-main">
             <div class="row-name">{{ req.name || req.email }}</div>
             <div class="row-sub">{{ req.email }}</div>
           </div>
           <div class="request-actions">
-            <el-button size="small" type="primary" @click="respond(req.id, true)">{{ t('dmAccept') }}</el-button>
-            <el-button size="small" @click="respond(req.id, false)">{{ t('dmReject') }}</el-button>
+            <el-button size="small" type="primary" @click="respond(req.friendId, true)">{{ t('dmAccept') }}</el-button>
+            <el-button size="small" @click="respond(req.friendId, false)">{{ t('dmReject') }}</el-button>
           </div>
         </div>
       </div>
@@ -138,9 +138,9 @@ async function handleAddFriend() {
   }
 }
 
-async function respond(id, accept) {
+async function respond(friendId, accept) {
   try {
-    await respondFriendRequest(id, accept)
+    await respondFriendRequest(friendId, accept)
     await loadRequests()
     if (accept) await loadFriends()
   } catch (e) {

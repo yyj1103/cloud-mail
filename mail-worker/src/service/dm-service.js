@@ -131,7 +131,15 @@ const dmService = {
 	async respondRequest(c, params, userId) {
 		const { friendId, accept } = params;
 
-		const row = await orm(c).select().from(friend).where(eq(friend.friendId, friendId)).get();
+		// friendId 缺失或不是数字时直接报“请求不存在”，不让 undefined/NaN 进查询
+		// （D1 不接受 undefined 绑定值，会抛 D1_TYPE_ERROR）
+		const id = Number(friendId);
+
+		if (!id) {
+			throw new BizError(t('friendRequestNotExist'));
+		}
+
+		const row = await orm(c).select().from(friend).where(eq(friend.friendId, id)).get();
 
 		if (!row || row.friendUserId !== userId || row.status !== friendStatus.PENDING) {
 			throw new BizError(t('friendRequestNotExist'));
@@ -140,7 +148,7 @@ const dmService = {
 		await orm(c).update(friend).set({
 			status: accept ? friendStatus.ACCEPTED : friendStatus.REJECTED,
 			updateTime: dayjs().format('YYYY-MM-DD HH:mm:ss')
-		}).where(eq(friend.friendId, friendId)).run();
+		}).where(eq(friend.friendId, id)).run();
 	},
 
 	async listFriends(c, userId, knownVers = {}) {
