@@ -31,7 +31,7 @@
       <UseVirtualList ref="scrollbarRef"
                         @scroll="onScroll"
                         :list="list"
-                        :options="{ itemHeight: itemHeight, overscan: 15 }"
+                        :options="{ itemHeight: getItemHeight, overscan: 15 }"
                         class="virtual"
                         style="height: 100%"
                         v-if="!loading && emailList.length > 0"
@@ -126,6 +126,10 @@
                            :type="type"/>
             <div class="noLoading" v-else-if="item.expand === 'noMoreData'">
               <div>{{ $t('noMoreData') }}</div>
+            </div>
+            <div class="list-footer" v-else-if="item.expand === 'footer'">
+              <div>七玄仙尊 © 2026. All Rights Reserved.</div>
+              <div>作者博客：<a href="https://blog.qixuan.ccwu.cc" target="_blank">blog.qixuan.ccwu.cc</a><span class="footer-sep">·</span>【合作联络】QQ：2384726093</div>
             </div>
           </template>
         </UseVirtualList>
@@ -405,7 +409,13 @@ const { arrivedState } = useScroll(scrollbarRef, {
 
 
 const list = computed(() => {
-  return [...emailList, ...expandList]
+  const items = [...emailList, ...expandList]
+  // 页脚占位项：放在列表最后，跟着虚拟滚动内容一起滚，滑到底才出现
+  // （布局里的页脚在邮件列表页是隐藏的，见 layout/index.vue）
+  if (!loading.value && emailList.length > 0) {
+    items.push({ emailId: 0, expand: 'footer' })
+  }
+  return items
 })
 
 const itemHeight = computed(() => {
@@ -415,6 +425,15 @@ const itemHeight = computed(() => {
       return isMobile.value ? 83 : 48;
     }
 })
+
+// 虚拟列表支持按下标算行高：页脚项单独给高度（每项包一层 overflow:hidden，超高会被裁掉）
+// 手机端 160px：文字在上、下面留约 80px 空隙，滑到底时右下角 + 按钮不盖住页脚文字
+const getItemHeight = (index) => {
+  if (list.value[index]?.expand === 'footer') {
+    return isMobile.value ? 160 : 64
+  }
+  return itemHeight.value
+}
 
 watch(emailList, () => {
   updateHasScrollbar();
@@ -1026,6 +1045,27 @@ function renderHighlight(value) {
     align-items: center;
     padding: 15px 0 0 0;
     color: var(--secondary-text-color);
+  }
+
+  // 列表末尾的页脚：跟着滚动内容走，滑到底才出现；文字在上、下面留空隙，避开右下角 + 按钮
+  .list-footer {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    text-align: center;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    padding: 8px 16px 0;
+
+    a {
+      color: var(--el-color-primary);
+      text-decoration: none;
+    }
+
+    .footer-sep {
+      margin: 0 8px;
+    }
   }
 
   .follow-loading {

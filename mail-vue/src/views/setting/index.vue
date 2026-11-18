@@ -60,6 +60,13 @@
         </div>
       </div>
     </div>
+    <div class="preference-item">
+      <div class="title">{{$t('addToHomeScreen')}}</div>
+      <div class="install-tip">{{$t('addToHomeScreenTip')}}</div>
+      <div>
+        <el-button type="primary" :disabled="isInstalled" @click="handleInstall">{{ isInstalled ? $t('addedToHomeScreen') : $t('addToHomeScreen') }}</el-button>
+      </div>
+    </div>
     <div class="del-email" v-perm="'my:delete'">
       <div class="title">{{$t('deleteUser')}}</div>
       <div style="color: var(--regular-text-color);">
@@ -91,6 +98,7 @@ import {useI18n} from "vue-i18n";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
 import ThemeSelector from "@/components/theme-selector/index.vue";
+import { isInstalled, isIos, promptInstall } from "@/utils/pwa-install.js";
 
 const { t } = useI18n()
 const accountStore = useAccountStore()
@@ -154,6 +162,16 @@ function changeLang(lang) {
   }
   localStorage.setItem('setting', JSON.stringify({...setting, lang}))
   window.location.reload()
+}
+
+// 添加到主屏幕：有原生安装事件（安卓 Chrome）就弹安装框；
+// 没有（iPhone 或浏览器不支持）就按设备给手动步骤；已全屏打开时按钮是禁用的
+async function handleInstall() {
+  if (isInstalled.value) return
+  const outcome = await promptInstall()
+  if (outcome) return
+  const steps = isIos() ? t('installStepsIos') : t('installStepsAndroid')
+  ElMessageBox.alert(steps, t('addToHomeScreen'), { confirmButtonText: t('confirm') })
 }
 
 const pwdShow = ref(false)
@@ -334,6 +352,11 @@ function submitPwd() {
   .language-select {
     width: 110px;
     max-width: 100%;
+  }
+
+  .install-tip {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
   }
 
   .del-email {

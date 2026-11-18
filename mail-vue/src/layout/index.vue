@@ -15,7 +15,7 @@
             <Header />
         </el-header>
         <Main />
-        <div class="site-footer">
+        <div class="site-footer" v-if="showFooter">
                     <div>七玄仙尊 © 2026. All Rights Reserved.</div>
                     <div>作者博客：<a href="https://blog.qixuan.ccwu.cc" target="_blank">blog.qixuan.ccwu.cc</a><span class="footer-sep">·</span>【合作联络】QQ：2384726093</div>
         </div>
@@ -31,12 +31,19 @@
 import Aside from '@/layout/aside/index.vue'
 import Header from '@/layout/header/index.vue'
 import Main from '@/layout/main/index.vue'
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import {useUiStore} from "@/store/ui.js";
 import writer from '@/layout/write/index.vue'
 import BottomNav from '@/layout/bottom-nav/index.vue'
 
 const uiStore = useUiStore();
+const route = useRoute();
+// 私信页（/dm）不显示站点页脚：对话页里页脚会和输入条下的发图隐私说明挤在一起重叠；
+// 邮件列表页（收件箱/星标/已发送/全部邮件/草稿）也不显示布局里的页脚：
+// 页脚由列表组件放在滚动内容最后（见 components/email-scroll/index.vue），滑到底才出现
+const mailListPaths = ['/inbox', '/starred', '/sent', '/all-mail', '/drafts']
+const showFooter = computed(() => !route.path.startsWith('/dm') && !mailListPaths.includes(route.path))
 const writerRef = ref({})
 const isMobile = ref(window.innerWidth < 1025)
 const handleResize = () => {
