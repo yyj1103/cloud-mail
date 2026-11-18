@@ -11,6 +11,7 @@ const en = {
     startDm: 'New message',
     dmNoRequests: 'No friend requests',
     dmSearchPlaceholder: 'Enter a username to add a friend',
+    dmOnlySiteEmail: 'Only site mailboxes (@qixuan.ccwu.cc) can be searched',
     dmAddFriend: 'Add friend',
     dmRequestSent: 'Request sent',
     dmAccept: 'Accept',

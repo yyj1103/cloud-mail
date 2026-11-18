@@ -17,8 +17,8 @@
             <template #prefix>
               <Icon icon="ic:round-search" width="18" height="18" />
             </template>
-            <!-- 输了用户名、没带 @ 时才在框里显示本站后缀；空着或输了完整邮箱时不显示 -->
-            <template v-if="searchKeyword.trim() && !searchKeyword.includes('@')" #append>@{{ mailDomain }}</template>
+            <!-- 本站后缀写死、一直显示：加好友只能搜本站邮箱 -->
+            <template #append>@qixuan.ccwu.cc</template>
           </el-input>
           <el-button type="primary" :loading="searching" @click="handleSearch">{{ t('search') }}</el-button>
         </div>
@@ -76,12 +76,10 @@ import { Icon } from '@iconify/vue'
 import { ElMessage } from 'element-plus'
 import { searchUser, sendFriendRequest, respondFriendRequest } from '@/request/dm.js'
 import { useDmStore } from '@/store/dm.js'
-import { useSettingStore } from '@/store/setting.js'
 
 const { t } = useI18n()
 const router = useRouter()
 const dmStore = useDmStore()
-const settingStore = useSettingStore()
 
 const searchKeyword = ref('')
 const searching = ref(false)
@@ -99,24 +97,31 @@ const addFriendLabel = computed(() => {
   return t('dmAddFriend')
 })
 
-// 搜索框后缀域名：与 normalizeEmail 补的后缀同源（本站域名），输用户名时才在框里显示
-const mailDomain = computed(() => settingStore.settings?.domain || 'qixuan.ccwu.cc')
+// 本站域名写死：加好友只能搜本站邮箱，不能按用户名（昵称/显示名）搜
+const SITE_DOMAIN = 'qixuan.ccwu.cc'
 
 function avatarText(user) {
   return (user.name || user.email || '?').charAt(0).toUpperCase()
 }
 
-// 与私信页相同的规则：没写 @ 就自动补本站域名后缀
+// 只收 @ 前面的用户名部分，一定补上写死的本站后缀；
+// 输了外站完整邮箱时返回 null，由调用方提示“只能搜索本站邮箱”
 function normalizeEmail(input) {
   const keyword = input.trim()
   if (!keyword) return ''
-  if (keyword.includes('@')) return keyword
-  const domain = settingStore.settings?.domain
-  return domain ? `${keyword}@${domain}` : keyword
+  if (!keyword.includes('@')) return keyword + '@' + SITE_DOMAIN
+  const [local, domain] = keyword.split('@')
+  if ((domain || '').trim().toLowerCase() !== SITE_DOMAIN) return null
+  const name = (local || '').trim()
+  return name ? name + '@' + SITE_DOMAIN : ''
 }
 
 async function handleSearch() {
   const email = normalizeEmail(searchKeyword.value)
+  if (email === null) {
+    ElMessage({ message: t('dmOnlySiteEmail'), type: 'warning', plain: true })
+    return
+  }
   if (!email) return
   searching.value = true
   searchResult.value = null

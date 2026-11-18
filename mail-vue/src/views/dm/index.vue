@@ -8,7 +8,8 @@
             @keyup.enter="doSearch"
             clearable
         >
-          <template v-if="searchEmail.trim() && !searchEmail.includes('@')" #append>@{{ mailDomain }}</template>
+          <!-- 本站后缀写死、一直显示：加好友只能搜本站邮箱 -->
+          <template #append>@qixuan.ccwu.cc</template>
         </el-input>
         <el-button type="primary" :loading="searchLoading" @click="doSearch">{{ $t('search') }}</el-button>
       </div>
@@ -259,7 +260,8 @@ const hasMore = ref(false)
 const mobileChat = ref(false)
 const showFriendAvatar = ref(false)
 const isMobile = computed(() => window.innerWidth < 768)
-const mailDomain = computed(() => userStore.user.email?.split('@')[1] || 'qixuan.ccwu.cc')
+// 本站域名写死：加好友只能搜本站邮箱，不能按用户名（昵称/显示名）搜
+const SITE_DOMAIN = 'qixuan.ccwu.cc'
 
 // 选择模式（Telegram 风格长按多选）
 const selecting = ref(false)
@@ -288,11 +290,16 @@ const replyTargetSummary = computed(() => {
   return replyTarget.value.type === 1 ? t('dmImageMsg') : (replyTarget.value.content || '').slice(0, 60)
 })
 
+// 只收 @ 前面的用户名部分，一定补上写死的本站后缀；
+// 输了外站完整邮箱时返回 null，由调用方提示“只能搜索本站邮箱”
 function normalizeEmail(input) {
   const value = input.trim()
   if (!value) return ''
-  if (value.includes('@')) return value
-  return value + '@' + mailDomain.value
+  if (!value.includes('@')) return value + '@' + SITE_DOMAIN
+  const [local, domain] = value.split('@')
+  if ((domain || '').trim().toLowerCase() !== SITE_DOMAIN) return null
+  const name = (local || '').trim()
+  return name ? name + '@' + SITE_DOMAIN : ''
 }
 
 function formatName(text) {
@@ -504,6 +511,10 @@ async function refreshAll() {
 
 async function doSearch() {
   const email = normalizeEmail(searchEmail.value)
+  if (email === null) {
+    ElMessage({ message: t('dmOnlySiteEmail'), type: 'warning', plain: true })
+    return
+  }
   if (!email) return
   searchLoading.value = true
   searchResult.value = null
