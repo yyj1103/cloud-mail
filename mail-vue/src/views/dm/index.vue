@@ -122,27 +122,26 @@
           </template>
         </el-scrollbar>
         <div class="chat-input">
-          <div class="chat-toolbar">
-            <button class="tool-btn" type="button" @click="emojiShow = !emojiShow">😊</button>
-            <button class="tool-btn" type="button" @click="imageInput.click()">🖼</button>
-            <span class="privacy-tip">{{ $t('dmImagePrivacyTip') }}</span>
-            <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onImageFile">
-          </div>
           <div v-show="emojiShow" class="emoji-panel">
             <span v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{ e }}</span>
           </div>
-          <div class="input-row">
+          <div class="input-bar">
+            <button class="tool-btn" type="button" @click="toggleEmoji">😊</button>
             <el-input
                 ref="inputRef"
                 v-model="inputContent"
                 type="textarea"
-                :rows="2"
+                :autosize="{ minRows: 1, maxRows: 4 }"
                 :placeholder="$t('dmTypeMessage')"
                 :maxlength="2000"
                 @keydown.enter.exact.prevent="doSend"
+                @focus="onInputFocus"
             />
-            <el-button type="primary" :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">{{ $t('send') }}</el-button>
+            <button class="tool-btn" type="button" @click="imageInput.click()">🖼</button>
+            <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onImageFile">
+            <el-button class="send-btn" type="primary" circle :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">➤</el-button>
           </div>
+          <div class="privacy-tip">{{ $t('dmImagePrivacyTip') }}</div>
         </div>
       </template>
       <el-empty v-else :description="$t('dmSelectFriend')" />
@@ -404,6 +403,28 @@ function isNearBottom() {
   return wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 80
 }
 
+function toggleEmoji() {
+  const nearBottom = isNearBottom()
+  emojiShow.value = !emojiShow.value
+  if (nearBottom) {
+    scrollToBottom()
+  }
+}
+
+function onInputFocus() {
+  // 手机键盘弹起约 300ms 后把最后一条消息滚到可见位置
+  setTimeout(() => {
+    if (currentFriend.value) scrollToBottom()
+  }, 350)
+}
+
+function onViewportResize() {
+  // 键盘弹起/收起导致可视高度变化时，输入框聚焦状态下滚到底
+  if (currentFriend.value && inputRef.value?.textarea && document.activeElement === inputRef.value.textarea) {
+    scrollToBottom()
+  }
+}
+
 function insertEmoji(e) {
   const ta = inputRef.value?.textarea
   if (ta) {
@@ -494,6 +515,9 @@ let pollTimer = null
 
 onMounted(async () => {
   await refreshAll()
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', onViewportResize)
+  }
   pollTimer = setInterval(async () => {
     if (document.hidden) return
     await refreshAll()
@@ -511,6 +535,9 @@ onUnmounted(() => {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
+  }
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', onViewportResize)
   }
 })
 
@@ -728,7 +755,7 @@ defineOptions({
 .message-list {
   flex: 1;
   min-height: 0;
-  padding: 12px 16px;
+  padding: 12px 16px 16px;
 }
 
 .load-more {
@@ -777,35 +804,86 @@ defineOptions({
   object-fit: cover;
 }
 
-.chat-toolbar {
+.chat-input {
+  flex-shrink: 0;
   display: flex;
-  gap: 4px;
-  padding: 0 2px 6px;
-}
-
-.tool-btn {
-  font-size: 20px;
-  line-height: 1;
-  padding: 4px 6px;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-}
-
-.privacy-tip {
-  align-self: center;
-  margin-left: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  flex-direction: column;
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
 }
 
 .emoji-panel {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  padding: 0 2px 8px;
+  padding: 2px;
+  margin-bottom: 8px;
   max-height: 132px;
   overflow-y: auto;
+}
+
+.input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 24px;
+  padding: 4px 4px 4px 6px;
+}
+
+.input-bar .el-textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+.input-bar .el-textarea__inner {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 8px 6px;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.input-bar .el-textarea__inner:focus {
+  box-shadow: none;
+}
+
+.tool-btn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+}
+
+.tool-btn:hover {
+  background: var(--el-fill-color);
+}
+
+.send-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 15px;
+}
+
+.privacy-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .emoji-panel span {
@@ -826,24 +904,24 @@ defineOptions({
   font-size: 14px;
 }
 
-.chat-input {
-  display: flex;
-  flex-direction: column;
-  padding: 8px 16px 12px;
-  border-top: 1px solid var(--el-border-color-light);
-}
-
-.input-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-}
-
 .back-btn {
   display: none;
 }
 
+@media (min-width: 768px) {
+  .dm-main {
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
 @media (max-width: 767px) {
+  .dm-page {
+    height: 100%;
+    height: calc(100dvh - 60px);
+  }
+
   .dm-side {
     width: 100%;
     border-right: none;
@@ -864,6 +942,18 @@ defineOptions({
 
   .back-btn {
     display: inline-block;
+  }
+
+  .chat-header {
+    padding: 10px 12px;
+  }
+
+  .message-list {
+    padding: 12px 12px 16px;
+  }
+
+  .chat-input {
+    padding: 8px 12px 10px;
   }
 
   .message-bubble {
