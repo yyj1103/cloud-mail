@@ -63,7 +63,7 @@
             v-for="conv in conversations"
             :key="conv.userId"
             class="conversation-item"
-            :class="{ active: currentFriend && currentFriend.userId === conv.userId }"
+            :class="{ active: currentFriend && currentFriend.userId === conv.userId, 'has-unread': conv.unread > 0 }"
             @click="openConversation(conv)"
         >
           <img v-if="conv.avatar" class="avatar-img" :src="conv.avatar" alt="">
@@ -210,11 +210,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useI18n } from "vue-i18n";
 import { Icon } from '@iconify/vue'
 import { useUserStore } from "@/store/user.js";
 import { useDmStore } from "@/store/dm.js";
+import { useUiStore } from "@/store/ui.js";
 import { tzDayjs } from "@/utils/day.js";
 import {
   searchUser,
@@ -232,6 +233,7 @@ import {
 const { t } = useI18n()
 const userStore = useUserStore();
 const dmStore = useDmStore();
+const uiStore = useUiStore();
 
 const searchEmail = ref('')
 const searchLoading = ref(false)
@@ -770,8 +772,23 @@ async function doSend() {
 
 let pollTimer = null
 
+// 手机端底部导航“私信”：从聊天窗口回到会话列表
+watch(() => uiStore.dmListSignal, (n) => {
+  if (n > 0) mobileChat.value = false
+})
+// 同步聊天窗口状态给底部导航 / FAB（聊天窗口内隐藏它们）
+watch(mobileChat, (v) => {
+  dmStore.inChat = v
+})
+
 onMounted(async () => {
   await refreshAll()
+  // 从联系人页点进来的好友：直接打开与该好友的会话
+  if (dmStore.pendingFriend) {
+    const friend = dmStore.pendingFriend
+    dmStore.pendingFriend = null
+    await openConversation(friend)
+  }
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', onViewportResize)
   }
@@ -1364,6 +1381,104 @@ defineOptions({
   .dm-side {
     width: 100%;
     border-right: none;
+    // 全幅列表 + 底部留出固定底部导航的空位，避免最后一行被导航遮住
+    padding: 8px 0 calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  // Telegram 式加好友搜索框：圆角搜索框
+  .add-friend {
+    padding: 0 12px;
+
+    :deep(.el-input__wrapper) {
+      border-radius: 999px;
+      background: var(--el-fill-color-light);
+      box-shadow: none;
+    }
+
+    :deep(.el-input-group__append) {
+      border-radius: 0 999px 999px 0;
+      background: var(--el-fill-color-light);
+      box-shadow: none;
+    }
+
+    .el-button {
+      border-radius: 999px;
+    }
+  }
+
+  // Telegram 式结果行：无边框卡片，改成带底部分隔线的一行
+  .search-result,
+  .request-item {
+    border: none;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+    border-radius: 0;
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  .search-result .avatar-img,
+  .search-result .letter-avatar,
+  .request-item .avatar-img,
+  .request-item .letter-avatar,
+  .request-item .letter-avatar.small {
+    width: 52px;
+    height: 52px;
+    font-size: 22px;
+  }
+
+  .result-name {
+    font-size: 16px;
+  }
+
+  .result-email {
+    font-size: 14px;
+  }
+
+  .section-title {
+    padding: 0 16px;
+  }
+
+  // Telegram 式会话行：52px 圆头像、名字 16px 加粗、预览 14px、时间 12px
+  .conversation-item {
+    padding: 10px 12px;
+    border-radius: 0;
+    gap: 12px;
+  }
+
+  .conversation-item .avatar-img,
+  .conversation-item .letter-avatar {
+    width: 52px;
+    height: 52px;
+    font-size: 22px;
+  }
+
+  .conv-name {
+    font-size: 16px;
+  }
+
+  .conv-last {
+    font-size: 14px;
+  }
+
+  .conv-time {
+    font-size: 12px;
+  }
+
+  // 有未读时时间变蓝（Telegram 样式）
+  .conversation-item.has-unread .conv-time {
+    color: var(--el-color-primary);
+  }
+
+  // 未读数：Telegram 蓝色圆徽章（Element Plus 默认是红色）
+  .conv-badge :deep(.el-badge__content) {
+    background: var(--el-color-primary);
+    border: none;
+    border-radius: 10px;
+    min-width: 20px;
+    height: 20px;
+    line-height: 20px;
+    font-size: 12px;
+    padding: 0 5px;
   }
 
   .dm-side.side-hidden {

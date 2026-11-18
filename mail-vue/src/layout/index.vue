@@ -22,6 +22,8 @@
       </el-main>
     </el-container>
   </el-container>
+  <!-- 手机端底部导航 + 右下角 + 按钮（只在 ≤767px 显示，见 bottom-nav/index.vue） -->
+  <bottom-nav />
   <writer ref="writerRef" />
 </template>
 
@@ -32,6 +34,7 @@ import Main from '@/layout/main/index.vue'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import {useUiStore} from "@/store/ui.js";
 import writer from '@/layout/write/index.vue'
+import BottomNav from '@/layout/bottom-nav/index.vue'
 
 const uiStore = useUiStore();
 const writerRef = ref({})
@@ -98,6 +101,10 @@ onBeforeUnmount(() => {
   background: var(--el-bg-color);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  // 手机端：底部导航是 fixed 定位，内容底部留出空位，避免最后一行被导航遮住
+  @media (max-width: 767px) {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .el-main {

@@ -40,6 +40,7 @@
           <template #default="{ data: item, index }" >
             <div :class="['email-row', props.type, { 'right-checked': item.rightChecked }]"
                  :data-checked="item.checked"
+                 :data-unread="item.unread === EmailUnreadEnum.UNREAD && showUnread"
                  @click="jumpDetails(item)"
                  v-if="!item.expand"
                  :key="item.emailId"
@@ -54,6 +55,8 @@
                 <Icon v-else icon="solar:star-line-duotone" width="18" height="18"/>
               </div>
               <div v-if="!showStar"></div>
+              <!-- 手机端 Telegram 式首字母头像（电脑端隐藏） -->
+              <div class="mail-letter-avatar" :style="{ background: avatarColor(item) }">{{ senderInitial(item) }}</div>
               <div class="title" :class="accountShow ? 'title-column' : 'title-column'">
 
                 <div class="email-sender" :style=" (showStatus ? 'gap: 10px;' : '') + ((item.unread === EmailUnreadEnum.UNREAD && showUnread)  ? 'font-weight: bold' : '')">
@@ -110,6 +113,8 @@
               </div>
               <div class="email-right" :style="showUserInfo ? 'align-self: start;':''">
                 <span class="email-time" :style="(item.unread === EmailUnreadEnum.UNREAD && showUnread) ? 'font-weight: bold' : ''">{{ item.formatCreateTime }}</span>
+                <!-- 手机端 Telegram 式未读蓝点（电脑端隐藏） -->
+                <span class="mail-unread-dot" v-if="item.unread === EmailUnreadEnum.UNREAD && showUnread" />
               </div>
             </div>
             <skeletonBlock v-else-if="item.expand === 'loading'"
@@ -916,6 +921,19 @@ function applyHighlight(email) {
   email.accountEmailHtml = renderHighlight(email.type === 0 ? email.toEmail : email.sendEmail);
 }
 
+// 手机端 Telegram 式首字母头像：发件人名字首字符 + 按发件人取色的背景（只用于显示，不改数据）
+const AVATAR_COLORS = ['#5b8def', '#4caf50', '#f2994a', '#e05d8f', '#7c6ff0', '#2bb3a3']
+function senderInitial(email) {
+  const name = (email.name || email.sendEmail || '?').trim()
+  return name.charAt(0).toUpperCase()
+}
+function avatarColor(email) {
+  const key = email.name || email.sendEmail || ''
+  let hash = 0
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
 watch(() => props.highlightText, () => {
   emailList.forEach(applyHighlight);
 })
@@ -1431,10 +1449,115 @@ function renderHighlight(value) {
   justify-content: center;
 }
 
+// 手机端 Telegram 式首字母头像：默认（电脑端）不显示
+.mail-letter-avatar {
+  display: none;
+}
+
+// 手机端 Telegram 式未读蓝点：默认（电脑端）不显示
+.mail-unread-dot {
+  display: none;
+}
+
 ul {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+// 手机端（≤767px）Telegram 式邮箱列表：圆头像、发件人加粗、主题+内容预览一行、右边时间+未读蓝点
+@media (max-width: 767px) {
+  :deep(.email-row) {
+    padding: 8px 12px;
+    height: 83px;
+
+    // 每行复选框在手机端隐藏（批量操作仍可用顶栏的全选框）；星标在 1366px 以下本来就隐藏
+    .checkbox,
+    .all-email-checkbox {
+      display: none;
+    }
+
+    .mail-letter-avatar {
+      display: flex;
+      flex-shrink: 0;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 22px;
+      font-weight: bold;
+      margin-right: 12px;
+    }
+
+    // 全部邮件（132px 行）：头像顶部对齐名字行
+    &.all-email .mail-letter-avatar {
+      align-self: flex-start;
+      margin-top: 6px;
+    }
+
+    .title {
+      padding-right: 8px;
+    }
+
+    // 名字行：16px；名字里的行内未读小点隐藏，改用右侧蓝点
+    .email-sender {
+      font-size: 16px;
+
+      .unread {
+        display: none;
+      }
+    }
+
+    .phone-time {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+    }
+
+    // 有未读时手机端时间变蓝（Telegram 样式）
+    &[data-unread="true"] .phone-time {
+      color: var(--el-color-primary);
+    }
+
+    // 主题 + 内容预览并在一行
+    .email-text {
+      display: flex;
+      align-items: center;
+      font-size: 14px;
+
+      .email-content {
+        padding-left: 6px;
+      }
+    }
+
+    // 右侧列：时间隐藏（已在名字行显示），只留未读蓝点
+    .email-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      padding-left: 8px;
+    }
+
+    .email-time {
+      display: none;
+    }
+
+    .mail-unread-dot {
+      display: block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--el-color-primary);
+      flex-shrink: 0;
+    }
+  }
+
+  // 虚拟列表底部留出固定底部导航的空位，避免最后一行被导航遮住
+  .virtual {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 </style>

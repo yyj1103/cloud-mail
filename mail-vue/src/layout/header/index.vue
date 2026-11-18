@@ -2,6 +2,8 @@
   <div class="header">
     <div class="header-btn">
       <hanburger @click="changeAside"></hanburger>
+      <!-- 手机端品牌名：Telegram 图里左上角的“Telegram”对应位置，手机端显示“七玄Mail” -->
+      <span class="brand-name">七玄Mail</span>
       <span class="breadcrumb-item">{{ $t(route.meta.title) }}</span>
     </div>
     <div v-perm="'email:send'" class="writer-box">
@@ -125,7 +127,7 @@ import {Icon} from "@iconify/vue";
 import {useUiStore} from "@/store/ui.js";
 import {useUserStore} from "@/store/user.js";
 import {useRoute} from "vue-router";
-import {computed, onBeforeUnmount, onMounted, ref} from "vue";
+import {computed, onBeforeUnmount, onMounted, ref, watch} from "vue";
 import {useSettingStore} from "@/store/setting.js";
 import {hasPerm} from "@/perm/perm.js"
 import {useI18n} from "vue-i18n";
@@ -479,6 +481,11 @@ onMounted(() => {
   })
 })
 
+// 手机端底部导航“我的”：打开右上角现有的头像/账号卡
+watch(() => uiStore.userCardSignal, (n) => {
+  if (n > 0) userDropdownRef.value?.handleOpen?.()
+})
+
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleUserCardPointerDown, true)
   outsidePointerEvents.forEach(type => {
@@ -677,6 +684,28 @@ onBeforeUnmount(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+// 手机端品牌名：默认（电脑端）不显示
+.brand-name {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  // 手机端顶栏显示品牌名“七玄Mail”，页面标题（面包屑）隐藏
+  .brand-name {
+    display: inline;
+    font-weight: bold;
+    font-size: 18px;
+    color: var(--el-text-color-primary);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .breadcrumb-item {
+    display: none;
+  }
 }
 
 .toolbar {

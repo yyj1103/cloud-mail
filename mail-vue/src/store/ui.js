@@ -11,6 +11,10 @@ export const useUiStore = defineStore('ui', {
         previewData: {},
         key: 0,
         dark: false,
+        // 手机端底部导航信号：私信页回到会话列表
+        dmListSignal: 0,
+        // 手机端底部导航信号：打开右上角头像/账号卡
+        userCardSignal: 0,
         asideCount: {
             email: 0,
             send: 0,
