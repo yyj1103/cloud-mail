@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <!-- interactive-widget=resizes-content：安卓 Chrome 键盘弹起时让布局视口跟着缩小，
+       否则 100dvh 不变、键盘会直接盖住页面底部的输入条（私信对话页就中过招） -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"/>
   <meta name="theme-color" content="#F1F1F1" id="theme-color-meta">
   <!-- PWA：添加到主屏幕后像 App 一样全屏打开（manifest.json 为静态文件，见 public/） -->
   <link rel="manifest" href="/manifest.json">

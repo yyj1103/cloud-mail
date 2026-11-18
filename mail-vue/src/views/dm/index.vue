@@ -1,5 +1,5 @@
 <template>
-  <div class="dm-page">
+  <div class="dm-page" :style="dmPageStyle">
     <div class="dm-side" :class="{ 'side-hidden': mobileChat }">
       <div class="add-friend">
         <el-input
@@ -252,6 +252,9 @@ const inputRef = ref(null)
 const imageInput = ref(null)
 const emojiList = ['😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜', '😎', '🤔', '😴', '😭', '😡', '🥺', '😏', '🙂', '😉', '😅', '😢', '😋', '🤗', '😷', '🤢', '🥳', '😤', '🙄', '😬', '🤐', '😳', '🥰', '😇', '🤩', '😈', '👍', '👎', '👏', '🙏', '👌', '✌️', '🤞', '👋', '💪', '🙌', '👀', '💕', '💔', '💯', '🔥', '✨', '🎉', '🎁', '🌹', '🍓', '🍕', '☕', '⚽', '🎮', '🚗', '✈️', '🌙', '⭐', '💤', '❓', '❗']
 const msgScrollRef = ref(null)
+// 键盘弹起时 .dm-page 的高度（px）：visualViewport 兜底，null 表示用 CSS（100dvh - 60px）
+const kbPageHeight = ref(null)
+const dmPageStyle = computed(() => (kbPageHeight.value ? { height: kbPageHeight.value + 'px' } : null))
 const msgPage = ref(1)
 const hasMore = ref(false)
 const mobileChat = ref(false)
@@ -672,7 +675,25 @@ function onInputFocus() {
   }, 350)
 }
 
+function updatePageHeight() {
+  // 键盘弹起时 .dm-page 跟着可视高度缩：正常情况下 viewport 的 interactive-widget=resizes-content
+  // 会让 100dvh 自动缩小，CSS 就够了；旧版浏览器忽略这个设置时 dvh 不变、输入条会被键盘盖住，
+  // 这里用 visualViewport 的真实可视高度直接定死 .dm-page 高度，输入条就贴在键盘上方。
+  // 键盘收起后可视高度恢复，改回 null 用 CSS。
+  if (!window.visualViewport || window.innerWidth >= 768) {
+    kbPageHeight.value = null
+    return
+  }
+  const gap = window.innerHeight - window.visualViewport.height
+  if (gap > 120) {
+    kbPageHeight.value = Math.max(200, Math.round(window.visualViewport.height - 60))
+  } else {
+    kbPageHeight.value = null
+  }
+}
+
 function onViewportResize() {
+  updatePageHeight()
   // 键盘弹起/收起导致可视高度变化时，输入框聚焦状态下滚到底
   if (currentFriend.value && inputRef.value?.textarea && document.activeElement === inputRef.value.textarea) {
     scrollToBottom()
