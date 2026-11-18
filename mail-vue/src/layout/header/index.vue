@@ -60,6 +60,7 @@
               <span v-else>{{ formatName(userStore.user.email) }}</span>
             </div>
             <el-button link size="small" class="avatar-change-btn" @click="avatarInput.click()">{{ $t('avatarChange') }}</el-button>
+            <div class="avatar-privacy-tip">{{ $t('avatarPrivacyTip') }}</div>
             <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/gif" style="display: none" @change="onAvatarFile">
             <div class="user-name">
               {{ userStore.user.name }}
@@ -482,6 +483,14 @@ onBeforeUnmount(() => {
 
   .avatar-change-btn {
     margin-top: 4px;
+  }
+
+  .avatar-privacy-tip {
+    margin-top: 2px;
+    padding: 0 16px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    text-align: center;
   }
 }
 

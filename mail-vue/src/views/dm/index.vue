@@ -110,8 +110,8 @@
             >
               <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar" :src="currentFriend.avatar" alt="">
               <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
-              <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="[msg.content]" fit="cover" @contextmenu.prevent="askDeleteMessage(msg)" />
-              <div v-else class="message-bubble" @contextmenu.prevent="askDeleteMessage(msg)">
+              <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="[msg.content]" fit="cover" @contextmenu.prevent="askRecallMessage(msg)" />
+              <div v-else class="message-bubble" @contextmenu.prevent="askRecallMessage(msg)">
                 <div class="message-content">{{ msg.content }}</div>
               </div>
               <img v-if="msg.senderUserId === userStore.user.userId && userStore.user.avatar" class="msg-avatar" :src="userStore.user.avatar" alt="">
@@ -123,6 +123,7 @@
           <div class="chat-toolbar">
             <button class="tool-btn" type="button" @click="emojiShow = !emojiShow">😊</button>
             <button class="tool-btn" type="button" @click="imageInput.click()">🖼</button>
+            <span class="privacy-tip">{{ $t('dmImagePrivacyTip') }}</span>
             <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onImageFile">
           </div>
           <div v-show="emojiShow" class="emoji-panel">
@@ -214,9 +215,9 @@ function showTimeLabel(index) {
   return cur.diff(prev, 'minute') > 5
 }
 
-function askDeleteMessage(msg) {
+function askRecallMessage(msg) {
   if (msg.senderUserId !== userStore.user.userId) return
-  ElMessageBox.confirm(t('dmDeleteMessageConfirm'), {
+  ElMessageBox.confirm(t('dmRecallMessageConfirm'), {
     confirmButtonText: t('confirm'),
     cancelButtonText: t('cancel'),
     type: 'warning'
@@ -695,6 +696,13 @@ defineOptions({
   cursor: pointer;
   border: none;
   background: transparent;
+}
+
+.privacy-tip {
+  align-self: center;
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .emoji-panel {
