@@ -37,12 +37,18 @@ const dbInit = {
 		await this.v3_6DB(c);
 		await this.v3_7DB(c);
 		await this.v3_8DB(c);
+		await this.v3_9DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
 
 	async v3_5DB(c) {
 		await c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_email_user_create_time ON email(user_id, create_time)`).run();
+	},
+
+	async v3_9DB(c) {
+		// 普通用户（默认身份）每天可发 1 封站外邮件：之前默认身份是 ban，完全禁发
+		await c.env.db.prepare(`UPDATE role SET send_count = 1, send_type = 'day' WHERE is_default = 1;`).run();
 	},
 
 	async v3_8DB(c) {
@@ -627,7 +633,7 @@ const dbInit = {
         INSERT INTO role (
           role_id, name, key, create_time, sort, description, user_id, is_default, send_count, send_type, account_count
         ) VALUES (
-          1, '普通用户', NULL, '0000-00-00 00:00:00', 0, '只有普通使用权限', 0, 1, NULL, 'ban', 10
+          1, '普通用户', NULL, '0000-00-00 00:00:00', 0, '只有普通使用权限', 0, 1, 1, 'day', 10
         )
       `).run();
 		}
