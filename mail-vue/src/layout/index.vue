@@ -9,7 +9,7 @@
         :class="(uiStore.asideShow && isMobile)? 'overlay-show':'overlay-hide'"
         @click="uiStore.asideShow = false"
     ></div>
-    <el-container class="main-container">
+    <el-container class="main-container" :class="{ 'no-bottom-pad': isDmChat }">
       <el-main>
         <el-header>
             <Header />
@@ -34,11 +34,15 @@ import Main from '@/layout/main/index.vue'
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import {useUiStore} from "@/store/ui.js";
+import { useDmStore } from "@/store/dm.js";
 import writer from '@/layout/write/index.vue'
 import BottomNav from '@/layout/bottom-nav/index.vue'
 
 const uiStore = useUiStore();
 const route = useRoute();
+const dmStore = useDmStore();
+// 私信聊天窗口内：底部胶囊导航是隐藏的，内容区不用留它的空位
+const isDmChat = computed(() => route.path.startsWith('/dm') && dmStore.inChat)
 // 私信页（/dm）不显示站点页脚：对话页里页脚会和输入条下的发图隐私说明挤在一起重叠；
 // 邮件列表页（收件箱/星标/已发送/全部邮件/草稿）也不显示布局里的页脚：
 // 页脚由列表组件放在滚动内容最后（见 components/email-scroll/index.vue），滑到底才出现
@@ -119,6 +123,14 @@ onBeforeUnmount(() => {
   // 56 + 12 再多留 12px，避免最后一行被导航遮住
   @media (max-width: 767px) {
     padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+// 私信聊天窗口内不留底部导航的空位：底部胶囊导航在聊天窗口内是隐藏的，
+// 留着 80px 会变成输入条下面的一大段空白（键盘弹起时顶栏滚出去了，空白更明显）
+.main-container.no-bottom-pad {
+  @media (max-width: 767px) {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 

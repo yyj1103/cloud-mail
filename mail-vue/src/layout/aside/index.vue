@@ -259,6 +259,14 @@ onUnmounted(() => {
 }
 
 .scroll {
+  height: 100%;
+}
 
+@media (max-width: 767px) {
+  // 侧栏最下面要能划到底：底部悬浮胶囊导航会盖住侧栏最下面约 80px，
+  // 滚动内容底部多留空位，最后一项（系统设置）才能划到导航上面
+  :deep(.el-scrollbar__view) {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+  }
 }
 </style>

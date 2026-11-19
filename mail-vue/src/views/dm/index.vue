@@ -180,7 +180,6 @@
             <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onImageFile">
             <el-button class="send-btn" type="primary" circle :loading="sendLoading" :disabled="!inputContent.trim()" @click="doSend">{{ editingMessage ? '✓' : '➤' }}</el-button>
           </div>
-          <div class="privacy-tip">{{ $t('dmImagePrivacyTip') }}</div>
         </div>
       </template>
       <el-empty v-else :description="$t('dmSelectFriend')" />
@@ -251,7 +250,7 @@ const imageInput = ref(null)
 const emojiList = ['😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜', '😎', '🤔', '😴', '😭', '😡', '🥺', '😏', '🙂', '😉', '😅', '😢', '😋', '🤗', '😷', '🤢', '🥳', '😤', '🙄', '😬', '🤐', '😳', '🥰', '😇', '🤩', '😈', '👍', '👎', '👏', '🙏', '👌', '✌️', '🤞', '👋', '💪', '🙌', '👀', '💕', '💔', '💯', '🔥', '✨', '🎉', '🎁', '🌹', '🍓', '🍕', '☕', '⚽', '🎮', '🚗', '✈️', '🌙', '⭐', '💤', '❓', '❗']
 const msgScrollRef = ref(null)
 const dmPageRef = ref(null)
-// 键盘弹起时 .dm-page 的高度（px）：visualViewport 兜底，null 表示用 CSS（100dvh - 60px - var(--safe-top)）
+// 键盘弹起时 .dm-page 的高度（px）：visualViewport 兜底，null 表示用 CSS（100dvh - 50px - var(--safe-top)）
 const kbPageHeight = ref(null)
 const dmPageStyle = computed(() => (kbPageHeight.value ? { height: kbPageHeight.value + 'px' } : null))
 const msgPage = ref(1)
@@ -700,10 +699,10 @@ function updatePageHeight() {
   }
   const gap = window.innerHeight - window.visualViewport.height
   if (gap > 120) {
-    // 全屏/standalone 时顶栏长高了 --safe-top（从 .layout 继承的变量），也要减掉，
-    // 否则输入条会被键盘盖住 --safe-top 那么高
+    // 键盘弹起时顶栏已经跟着滚出可视区了，不再占地方：高度只减 --safe-top，
+    // 再减顶栏那 60px，会在输入条和键盘之间留一段空白
     const safeTop = parseFloat(getComputedStyle(dmPageRef.value).getPropertyValue('--safe-top')) || 0
-    kbPageHeight.value = Math.max(200, Math.round(window.visualViewport.height - 60 - safeTop))
+    kbPageHeight.value = Math.max(200, Math.round(window.visualViewport.height - safeTop))
   } else {
     kbPageHeight.value = null
   }
@@ -1380,12 +1379,6 @@ defineOptions({
   font-size: 15px;
 }
 
-.privacy-tip {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
 .emoji-panel span {
   font-size: 22px;
   line-height: 1.3;
@@ -1419,8 +1412,9 @@ defineOptions({
 @media (max-width: 767px) {
   .dm-page {
     height: 100%;
+    // 手机端顶栏是 50px（60px 是电脑端默认值）：减掉它，输入条正好贴在可视区底部；
     // 全屏/standalone 时顶栏长高了 --safe-top，聊天页也要跟着减掉，否则输入条会被顶出可视区
-    height: calc(100dvh - 60px - var(--safe-top, 0px));
+    height: calc(100dvh - 50px - var(--safe-top, 0px));
   }
 
   .dm-side {

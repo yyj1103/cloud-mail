@@ -39,7 +39,6 @@ const zh = {
     dmForwardTitle: '选择要转发给的好友',
     dmForwarded: '已转发',
     dmCopied: '已复制',
-    dmImagePrivacyTip: '只会读取你选中的这张照片，不会访问整个相册',
     avatarChange: '更换头像',
     avatarPrivacyTip: '只会读取你选中的这张照片，不会访问整个相册',
     avatarCrop: '裁剪头像',

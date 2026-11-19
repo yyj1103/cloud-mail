@@ -39,7 +39,6 @@ const en = {
     dmForwardTitle: 'Choose a friend to forward to',
     dmForwarded: 'Forwarded',
     dmCopied: 'Copied',
-    dmImagePrivacyTip: 'Only the photo you pick is read. Your album is never accessed.',
     avatarChange: 'Change avatar',
     avatarPrivacyTip: 'Only the photo you pick is read. Your album is never accessed.',
     avatarCrop: 'Crop avatar',
