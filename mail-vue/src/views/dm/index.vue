@@ -4,7 +4,6 @@
       <div class="add-friend">
         <el-input
             v-model="searchEmail"
-            :placeholder="$t('dmSearchPlaceholder')"
             @keyup.enter="doSearch"
             clearable
         >

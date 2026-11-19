@@ -9,7 +9,6 @@
         <div class="search-row">
           <el-input
             v-model="searchKeyword"
-            :placeholder="t('dmSearchPlaceholder')"
             clearable
             class="search-input"
             @keyup.enter="handleSearch"

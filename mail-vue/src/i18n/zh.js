@@ -10,7 +10,6 @@ const zh = {
     myProfile: '我的',
     startDm: '发起私信',
     dmNoRequests: '暂无好友申请',
-    dmSearchPlaceholder: '输入对方用户名添加好友',
     dmOnlySiteEmail: '只能搜索本站邮箱（@qixuan.ccwu.cc）',
     dmAddFriend: '添加好友',
     dmRequestSent: '已发送请求',
