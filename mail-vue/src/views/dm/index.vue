@@ -825,13 +825,14 @@ onMounted(async () => {
     conversations.value = dmStore.conversations
     incomingRequests.value = dmStore.incomingRequests
   }
-  await refreshAll()
-  // 从联系人页点进来的好友：直接打开与该好友的会话
+  // 从联系人页点进来的好友：先立刻打开会话，不等后面的刷新；
+  // 以前是等 refreshAll 跑完才打开，手机上要等一两秒，看起来就像第一下没点上
   if (dmStore.pendingFriend) {
     const friend = dmStore.pendingFriend
     dmStore.pendingFriend = null
-    await openConversation(friend)
+    openConversation(friend).catch(() => {})
   }
+  await refreshAll()
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', onViewportResize)
   }

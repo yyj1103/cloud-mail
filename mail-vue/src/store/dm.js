@@ -49,9 +49,15 @@ export const useDmStore = defineStore('dm', {
             }
         },
         // 好友列表：失败时抛错，由调用方处理（联系人页会显示空状态）
+        // 数据没变时不换数组，避免后台刷新时列表重画、把正在点的那行换掉
         async loadFriends() {
             const data = await listFriends()
-            this.friends = data || []
+            const list = data || []
+            const same = this.friends.length === list.length && this.friends.every((f, i) => {
+                const g = list[i]
+                return f.userId === g.userId && f.email === g.email && (f.name || '') === (g.name || '') && (f.avatarVer || '') === (g.avatarVer || '') && !!f.avatar === !!g.avatar
+            })
+            if (!same) this.friends = list
             this.friendsLoaded = true
             return this.friends
         },
