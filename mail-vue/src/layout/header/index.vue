@@ -139,6 +139,7 @@ import emailSearch from '@/components/email-search/index.vue'
 import allEmailSearch from '@/components/all-email-search/index.vue'
 import {useEmailStore} from '@/store/email.js'
 import {useSendStore} from '@/store/send.js'
+import {useDmStore} from '@/store/dm.js'
 
 const {t} = useI18n();
 const route = useRoute();
@@ -334,6 +335,8 @@ function changeAside() {
 function clickLogout() {
   logoutLoading.value = true
   logout().then(() => {
+    // 退出就清掉本地的联系人/聊天记录缓存：删掉就是删掉，换人登录也不会看到上一个人的
+    try { useDmStore().clearCache() } catch (e) {}
     localStorage.removeItem("token")
     router.replace('/login')
   }).finally(() => {
