@@ -39,6 +39,7 @@ const dbInit = {
 		await this.v3_8DB(c);
 		await this.v3_9DB(c);
 		await this.v3_10DB(c);
+		await this.v3_11DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -50,6 +51,22 @@ const dbInit = {
 	async v3_9DB(c) {
 		// 普通用户（默认身份）每天可发 1 封站外邮件：之前默认身份是 ban，完全禁发
 		await c.env.db.prepare(`UPDATE role SET send_count = 1, send_type = 'day' WHERE is_default = 1;`).run();
+	},
+
+	async v3_11DB(c) {
+		// 好友备注：单独一张表（见 entity/friend-remark.js），CREATE TABLE IF NOT EXISTS
+		// 对已有数据库也安全；就算没跑过 init，dm-service 里每次用之前也会先建表
+		try {
+			await c.env.db.prepare(`CREATE TABLE IF NOT EXISTS friend_remark (
+				user_id INTEGER NOT NULL,
+				friend_user_id INTEGER NOT NULL,
+				remark TEXT NOT NULL DEFAULT '',
+				update_time DATETIME,
+				PRIMARY KEY (user_id, friend_user_id)
+			)`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
 	},
 
 	async v3_10DB(c) {

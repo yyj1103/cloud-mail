@@ -45,11 +45,18 @@ const dmService = {
 		const rel = await this.selectRelation(c, userId, target.userId);
 		const accountRow = await accountService.selectByEmailIncludeDel(c, email);
 
+		let remark = '';
+		if (rel && rel.status === friendStatus.ACCEPTED) {
+			const map = await this.remarkMap(c, userId);
+			remark = map[target.userId] || '';
+		}
+
 		return {
 			userId: target.userId,
 			email: target.email,
 			avatar: target.avatar || '',
 			name: accountRow?.name || emailUtils.getName(email),
+			remark,
 			relation: rel ? rel.status : -1,
 			isRequester: rel ? rel.userId === userId : false,
 			friendId: rel ? rel.friendId : null
@@ -67,6 +74,54 @@ const dmService = {
 	async isFriend(c, userId, friendUserId) {
 		const rel = await this.selectRelation(c, userId, friendUserId);
 		return !!rel && rel.status === friendStatus.ACCEPTED;
+	},
+
+	// 好友备注存在单独的 friend_remark 表里（(user_id, friend_user_id) 主键），
+	// 因为一对好友只有一行 friend 记录，但两边的备注各不相同。
+	// 没跑过 init 也能用：第一次用到备注前先建表（已存在时什么都不做）。
+	async ensureRemarkTable(c) {
+		await c.env.db.prepare(`CREATE TABLE IF NOT EXISTS friend_remark (
+			user_id INTEGER NOT NULL,
+			friend_user_id INTEGER NOT NULL,
+			remark TEXT NOT NULL DEFAULT '',
+			update_time DATETIME,
+			PRIMARY KEY (user_id, friend_user_id)
+		)`).run();
+	},
+
+	async remarkMap(c, userId) {
+		await this.ensureRemarkTable(c);
+		const rows = await c.env.db.prepare(
+			`SELECT friend_user_id, remark FROM friend_remark WHERE user_id = ?`
+		).bind(userId).all();
+		const map = {};
+		for (const r of rows.results || []) {
+			map[r.friend_user_id] = r.remark || '';
+		}
+		return map;
+	},
+
+	// 给好友改备注：空字符串 = 清掉备注；不是好友不能改；最多 20 个字
+	async setRemark(c, params, userId) {
+		const friendUserId = Number(params.friendUserId);
+		const remark = (params.remark || '').trim();
+		if (!friendUserId || !(await this.isFriend(c, userId, friendUserId))) {
+			throw new BizError(t('notFriend'));
+		}
+		if (remark.length > 20) {
+			throw new BizError(t('remarkTooLong'));
+		}
+		await this.ensureRemarkTable(c);
+		if (!remark) {
+			await c.env.db.prepare(
+				`DELETE FROM friend_remark WHERE user_id = ? AND friend_user_id = ?`
+			).bind(userId, friendUserId).run();
+			return;
+		}
+		await c.env.db.prepare(
+			`INSERT INTO friend_remark (user_id, friend_user_id, remark, update_time) VALUES (?, ?, ?, ?)
+			ON CONFLICT(user_id, friend_user_id) DO UPDATE SET remark = excluded.remark, update_time = excluded.update_time`
+		).bind(userId, friendUserId, remark, dayjs().format('YYYY-MM-DD HH:mm:ss')).run();
 	},
 
 	async sendRequest(c, params, userId) {
@@ -164,8 +219,9 @@ const dmService = {
 		}
 
 		const infoMap = await this.userInfoMap(c, friendIds, knownVers);
+		const remarks = await this.remarkMap(c, userId);
 
-		return friendIds.map(id => ({ userId: id, ...infoMap[id] }));
+		return friendIds.map(id => ({ userId: id, ...infoMap[id], remark: remarks[id] || '' }));
 	},
 
 	async avatarVer(avatar) {
@@ -220,6 +276,12 @@ const dmService = {
 				and(eq(friend.userId, userId), eq(friend.friendUserId, friendUserId)),
 				and(eq(friend.userId, friendUserId), eq(friend.friendUserId, userId))
 			)).run();
+
+		// 删好友连同两边的备注一起清掉：删了就是删了，不留下来
+		await this.ensureRemarkTable(c);
+		await c.env.db.prepare(
+			`DELETE FROM friend_remark WHERE (user_id = ? AND friend_user_id = ?) OR (user_id = ? AND friend_user_id = ?)`
+		).bind(userId, friendUserId, friendUserId, userId).run();
 	},
 
 	async sendMessage(c, params, userId) {

@@ -56,6 +56,7 @@ const zh = {
 	friendRequestPending: '好友请求已发送，请等待对方处理',
 	friendRequestNotExist: '好友请求不存在',
 	notFriend: '对方还不是你的好友',
+	remarkTooLong: '备注最多 20 个字',
 	emptyMessage: '消息内容不能为空',
 	messageTooLong: '消息不能超过2000字',
 	sendTooFast: '发送太快了，请稍后再试',

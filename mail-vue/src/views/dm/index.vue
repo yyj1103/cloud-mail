@@ -16,7 +16,7 @@
         <img v-if="searchResult.avatar" class="avatar-img" :src="searchResult.avatar" alt="">
         <div v-else class="letter-avatar">{{ formatName(searchResult.name || searchResult.email) }}</div>
         <div class="result-info">
-          <div class="result-name">{{ searchResult.name }}</div>
+          <div class="result-name">{{ displayNameOf(searchResult) }}</div>
           <div class="result-email">{{ searchResult.email }}</div>
         </div>
         <el-button
@@ -67,9 +67,9 @@
             @click="openConversation(conv)"
         >
           <img v-if="conv.avatar" class="avatar-img" :src="conv.avatar" alt="">
-          <div v-else class="letter-avatar">{{ formatName(conv.name || conv.email) }}</div>
+          <div v-else class="letter-avatar">{{ formatName(displayNameOf(conv)) }}</div>
           <div class="conv-info">
-            <div class="conv-name">{{ conv.name }}</div>
+            <div class="conv-name">{{ displayNameOf(conv) }}</div>
             <div class="conv-last">{{ conv.lastMessage ? (conv.lastMessage.type === 1 ? $t('dmImageMsg') : conv.lastMessage.content) : conv.email }}</div>
           </div>
           <div class="conv-right">
@@ -96,14 +96,15 @@
           <template v-else>
             <el-button v-if="isMobile" class="back-btn" link @click="mobileChat = false">&lt; {{ $t('dmFriends') }}</el-button>
             <img v-if="currentFriend.avatar" class="avatar-img friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
-            <div v-else class="letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
+            <div v-else class="letter-avatar">{{ formatName(displayNameOf(currentFriend)) }}</div>
             <div class="chat-title">
-              <div class="chat-name">{{ currentFriend.name }}</div>
+              <div class="chat-name">{{ displayNameOf(currentFriend) }}</div>
             </div>
             <el-dropdown trigger="click">
               <el-button link class="more-btn">···</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item @click="askRemark">{{ $t('dmRemark') }}</el-dropdown-item>
                   <el-dropdown-item @click="doRemoveFriend">{{ $t('dmRemoveFriend') }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -126,7 +127,7 @@
                 <span v-if="selectedIds.has(msg.messageId)">✓</span>
               </span>
               <img v-if="msg.senderUserId !== userStore.user.userId && currentFriend.avatar" class="msg-avatar friend-avatar" :src="currentFriend.avatar" alt="" @dblclick="showFriendAvatar = true">
-              <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(currentFriend.name || currentFriend.email) }}</div>
+              <div v-else-if="msg.senderUserId !== userStore.user.userId" class="msg-avatar letter-avatar">{{ formatName(displayNameOf(currentFriend)) }}</div>
               <div class="message-body">
                 <div v-if="msg.replyTo" class="reply-quote">
                   <div class="reply-quote-name">{{ replySenderName(msg.replyTo) }}</div>
@@ -184,7 +185,7 @@
       </template>
       <el-empty v-else :description="$t('dmSelectFriend')" />
     </div>
-    <el-dialog v-model="showFriendAvatar" :title="currentFriend?.name || currentFriend?.email" width="320" align-center>
+    <el-dialog v-model="showFriendAvatar" :title="displayNameOf(currentFriend)" width="320" align-center>
       <img v-if="currentFriend?.avatar" :src="currentFriend.avatar" class="avatar-preview-img" alt="">
     </el-dialog>
     <el-dialog v-model="forwardDialogVisible" :title="$t('dmForwardTitle')" width="340" align-center>
@@ -193,7 +194,7 @@
           <img v-if="f.avatar" class="avatar-img" :src="f.avatar" alt="">
           <div v-else class="letter-avatar">{{ formatName(f.name || f.email) }}</div>
           <div class="result-info">
-            <div class="result-name">{{ f.name }}</div>
+            <div class="result-name">{{ displayNameOf(f) }}</div>
             <div class="result-email">{{ f.email }}</div>
           </div>
           <span v-if="forwardTarget && forwardTarget.userId === f.userId" class="forward-check">✓</span>
@@ -210,10 +211,11 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useI18n } from "vue-i18n";
 import { Icon } from '@iconify/vue'
 import { useUserStore } from "@/store/user.js";
-import { useDmStore } from "@/store/dm.js";
+import { useDmStore, displayNameOf } from "@/store/dm.js";
 import { useUiStore } from "@/store/ui.js";
 import { tzDayjs } from "@/utils/day.js";
 import {
@@ -221,6 +223,7 @@ import {
   sendFriendRequest,
   respondFriendRequest,
   removeFriend,
+  setFriendRemark,
   sendMessage,
   listMessages,
   deleteMessage,
@@ -281,7 +284,7 @@ const replyTargetName = computed(() => {
   if (!replyTarget.value) return ''
   return replyTarget.value.senderUserId === userStore.user.userId
       ? t('dmMe')
-      : (currentFriend.value?.name || currentFriend.value?.email || '')
+      : displayNameOf(currentFriend.value)
 })
 const replyTargetSummary = computed(() => {
   if (!replyTarget.value) return ''
@@ -359,7 +362,7 @@ function replySenderName(replyTo) {
   if (!replyTo) return ''
   return replyTo.senderUserId === userStore.user.userId
       ? t('dmMe')
-      : (currentFriend.value?.name || currentFriend.value?.email || '')
+      : displayNameOf(currentFriend.value)
 }
 
 function startReply() {
@@ -542,6 +545,27 @@ async function doRespond(friendId, accept) {
   searchResult.value = null
   searchEmail.value = ''
   await refreshAll()
+}
+
+// 改备注：留空就是清除备注；只改自己看的名字，对方看不到
+async function askRemark() {
+  if (!currentFriend.value) return
+  try {
+    const { value } = await ElMessageBox.prompt(currentFriend.value.email, t('dmRemarkTitle'), {
+      confirmButtonText: t('confirm'),
+      cancelButtonText: t('cancel'),
+      inputValue: currentFriend.value.remark || '',
+      inputPlaceholder: t('dmRemarkPlaceholder'),
+      inputValidator: (v) => (v || '').trim().length <= 20 || t('dmRemarkTooLong'),
+    })
+    const remark = (value || '').trim()
+    await setFriendRemark(currentFriend.value.userId, remark)
+    dmStore.applyRemark(currentFriend.value.userId, remark)
+    currentFriend.value.remark = remark
+    ElMessage({ message: t('dmRemarkSaved'), type: 'success', plain: true })
+  } catch (e) {
+    // 点取消不做任何事；服务端报错已由请求拦截器提示
+  }
 }
 
 async function doRemoveFriend() {

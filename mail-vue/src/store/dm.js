@@ -47,6 +47,14 @@ function serializeDmCache(state) {
         ]),
     })
 }
+// 显示名字：有备注就显示备注，没有就显示对方起的名字，再没有就显示邮箱
+export function displayNameOf(u) {
+    if (!u) return ''
+    const remark = (u.remark || '').trim()
+    if (remark) return remark
+    return u.name || u.email || ''
+}
+
 function deserializeDmCache(str) {
     const data = JSON.parse(str)
     return {
@@ -146,7 +154,7 @@ export const useDmStore = defineStore('dm', {
             const list = data || []
             const same = this.friends.length === list.length && this.friends.every((f, i) => {
                 const g = list[i]
-                return f.userId === g.userId && f.email === g.email && (f.name || '') === (g.name || '') && (f.avatarVer || '') === (g.avatarVer || '') && !!f.avatar === !!g.avatar
+                return f.userId === g.userId && f.email === g.email && (f.name || '') === (g.name || '') && (f.remark || '') === (g.remark || '') && (f.avatarVer || '') === (g.avatarVer || '') && !!f.avatar === !!g.avatar
             })
             if (!same) this.friends = list
             this.friendsLoaded = true
@@ -207,6 +215,17 @@ export const useDmStore = defineStore('dm', {
         dropMessages(userId) {
             this.messagesCache.delete(userId)
             this.messagesCache = new Map(this.messagesCache)
+        },
+        // 改备注后立刻更新本地的好友和会话列表，不用等后台刷新；
+        // 写进 state 的同时也会写回本地存储（persist），重新进 App 也在
+        applyRemark(friendUserId, remark) {
+            const r = (remark || '').trim()
+            for (const f of this.friends) {
+                if (f.userId === friendUserId) f.remark = r
+            }
+            for (const c of this.conversations) {
+                if (c.userId === friendUserId) c.remark = r
+            }
         },
     }
 })

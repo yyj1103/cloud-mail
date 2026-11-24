@@ -56,6 +56,7 @@ const en = {
 	friendRequestPending: 'Friend request already sent, waiting for a reply',
 	friendRequestNotExist: 'Friend request does not exist',
 	notFriend: 'This user is not your friend yet',
+	remarkTooLong: 'Remark can be at most 20 characters',
 	emptyMessage: 'Message cannot be empty',
 	messageTooLong: 'Message cannot exceed 2000 characters',
 	sendTooFast: 'Sending too fast, please try again later',

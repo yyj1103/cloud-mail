@@ -56,9 +56,12 @@
           <div v-for="f in friends" :key="f.userId" class="result-row" @click="openDm(f)">
             <el-avatar :size="52" :src="f.avatar || undefined" class="row-avatar">{{ avatarText(f) }}</el-avatar>
             <div class="row-main">
-              <div class="row-name">{{ f.name || f.email }}</div>
-              <div class="row-sub">{{ f.email }}</div>
+              <div class="row-name">{{ displayNameOf(f) }}</div>
+              <div class="row-sub">{{ f.remark ? f.name + ' · ' + f.email : f.email }}</div>
             </div>
+            <button class="remark-btn" type="button" :title="$t('dmRemark')" @click.stop="editRemark(f)">
+              <Icon icon="mdi:pencil-outline" width="18" height="18" />
+            </button>
             <Icon icon="material-symbols-light:arrow-forward-ios" width="16" height="16" class="row-chevron" />
           </div>
         </div>
@@ -72,9 +75,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
-import { ElMessage } from 'element-plus'
-import { searchUser, sendFriendRequest, respondFriendRequest } from '@/request/dm.js'
-import { useDmStore } from '@/store/dm.js'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { searchUser, sendFriendRequest, respondFriendRequest, setFriendRemark } from '@/request/dm.js'
+import { useDmStore, displayNameOf } from '@/store/dm.js'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -179,6 +182,25 @@ async function loadFriends() {
     // 服务端错误已由请求拦截器提示
   } finally {
     loading.value = false
+  }
+}
+
+// 改备注：留空就是清除备注；只改自己看的名字，对方看不到
+async function editRemark(f) {
+  try {
+    const { value } = await ElMessageBox.prompt(f.email, t('dmRemarkTitle'), {
+      confirmButtonText: t('confirm'),
+      cancelButtonText: t('cancel'),
+      inputValue: f.remark || '',
+      inputPlaceholder: t('dmRemarkPlaceholder'),
+      inputValidator: (v) => (v || '').trim().length <= 20 || t('dmRemarkTooLong'),
+    })
+    const remark = (value || '').trim()
+    await setFriendRemark(f.userId, remark)
+    dmStore.applyRemark(f.userId, remark)
+    ElMessage({ message: t('dmRemarkSaved'), type: 'success', plain: true })
+  } catch (e) {
+    // 点取消不做任何事；服务端报错已由请求拦截器提示
   }
 }
 
@@ -321,6 +343,21 @@ onMounted(() => {
 .row-chevron {
   flex-shrink: 0;
   color: var(--el-text-color-placeholder);
+}
+
+.remark-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
 }
 
 .empty {

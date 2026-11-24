@@ -28,6 +28,11 @@ app.get('/dm/friends', async (c) => {
 	return c.json(result.ok(data));
 });
 
+app.put('/dm/friend/remark', async (c) => {
+	await dmService.setRemark(c, await c.req.json(), userContext.getUserId(c));
+	return c.json(result.ok());
+});
+
 app.delete('/dm/friend', async (c) => {
 	await dmService.removeFriend(c, c.req.query(), userContext.getUserId(c));
 	return c.json(result.ok());

@@ -26,6 +26,10 @@ export function removeFriend(friendUserId) {
     return http.delete('/dm/friend', {params: {friendUserId}})
 }
 
+export function setFriendRemark(friendUserId, remark) {
+    return http.put('/dm/friend/remark', {friendUserId, remark})
+}
+
 export function sendMessage(receiverUserId, content, type = 0, replyToMessageId) {
     const data = {receiverUserId, content, type}
     if (replyToMessageId) data.replyToMessageId = replyToMessageId
