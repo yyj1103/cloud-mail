@@ -64,7 +64,7 @@ const userService = {
 			throw new BizError(t('avatarInvalidType'));
 		}
 
-		const match = avatar.match(/^data:image\/(jpeg|png|gif);base64,([A-Za-z0-9+/=]+)$/);
+		const match = avatar.match(/^data:image\/(jpeg|png|gif|webp);base64,([A-Za-z0-9+/=]+)$/);
 
 		if (!match) {
 			throw new BizError(t('avatarInvalidType'));

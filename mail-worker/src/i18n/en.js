@@ -65,7 +65,7 @@ const en = {
 	messageTooLong: 'Message cannot exceed 2000 characters',
 	sendTooFast: 'Sending too fast, please try again later',
 	dmCannotEdit: 'Only your own text messages can be edited',
-	avatarInvalidType: 'Avatar must be a JPG, PNG or GIF image',
+	avatarInvalidType: 'Avatar must be a JPG, PNG, GIF or WEBP image',
 	avatarTooLarge: 'Avatar image cannot exceed 5MB',
 	invalidImage: 'Only JPG, PNG, GIF or WEBP images can be sent',
 	imageTooLarge: 'Image cannot exceed 1MB',

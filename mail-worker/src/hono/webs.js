@@ -22,4 +22,5 @@ import '../api/telegram-api'
 import '../api/oauth-api'
 import '../api/dm-api'
 import '../api/race-api'
+import '../api/dance-api'
 export default app;

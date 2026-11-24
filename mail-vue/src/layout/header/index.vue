@@ -66,7 +66,8 @@
             </div>
             <el-button link size="small" class="avatar-change-btn" @click="avatarInput.click()">{{ $t('avatarChange') }}</el-button>
             <div class="avatar-privacy-tip">{{ $t('avatarPrivacyTip') }}</div>
-            <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/gif" style="display: none" @change="onAvatarFile">
+            <div class="avatar-privacy-tip">{{ $t('avatarAnimatedTip') }}</div>
+            <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: none" @change="onAvatarFile">
             <div class="user-name">
               {{ userStore.user.name }}
             </div>
@@ -464,15 +465,15 @@ function onAvatarFile(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
-  if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+  if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
     ElMessage({ message: t('avatarInvalidType'), type: 'error', plain: true })
     return
   }
   ;(async () => {
     try {
       let dataUrl
-      if (file.type === 'image/gif') {
-        // 动图保持原样，只限大小
+      if (file.type === 'image/gif' || file.type === 'image/webp') {
+        // 动图（GIF / 动态 WebP）保持原样直接上传，只限大小，不裁剪、不转格式，头像会一直动
         if (file.size > 5 * 1024 * 1024) {
           ElMessage({ message: t('avatarTooLarge'), type: 'error', plain: true })
           return

@@ -41,6 +41,11 @@
           <Icon icon="mdi:run-fast" width="20" height="20" />
           <span class="menu-name" style="margin-left: 16px">{{$t('cmfly')}}</span>
         </el-menu-item>
+        <el-menu-item @click="router.push({name: 'dance'})" index="dance"
+                      :class="route.meta.name === 'dance' ? 'choose-item' : ''">
+          <Icon icon="mdi:music" width="20" height="20" />
+          <span class="menu-name" style="margin-left: 16px">{{$t('dance')}}</span>
+        </el-menu-item>
         <el-menu-item @click="router.push({name: 'setting'})" index="setting"
                       :class="route.meta.name === 'setting' ? 'choose-item' : ''">
           <Icon icon="fluent:settings-48-regular" width="20" height="20" />
