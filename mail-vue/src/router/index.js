@@ -71,6 +71,16 @@ const routes = [
                     menu: true
                 }
             },
+            {
+                path: '/race',
+                name: 'race',
+                component: () => import('@/views/race/index.vue'),
+                meta: {
+                    title: 'cmfly',
+                    name: 'race',
+                    menu: true
+                }
+            },
         ]
 
     },
