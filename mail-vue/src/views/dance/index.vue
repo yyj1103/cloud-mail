@@ -10,6 +10,7 @@
         <div>🔥 {{ $t('danceHow3') }}</div>
         <div>👯 {{ $t('danceHow4') }}</div>
       </div>
+      <el-button v-if="dmFriendId" type="primary" size="large" class="home-btn" :loading="creating" @click="inviteDance">💃 {{ $t('danceInviteFriend') }}</el-button>
       <el-button type="primary" size="large" class="home-btn" :loading="creating" @click="doCreate">{{ $t('danceCreateRoom') }}</el-button>
       <div class="join-row">
         <el-input v-model="joinCode"  :placeholder="$t('danceEnterCode')"  maxlength="6" clearable @keyup.enter="doJoin" />
@@ -132,6 +133,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/store/user.js'
 import { createDance, joinDance, getDanceRoom, startDance, updateDanceScore, leaveDance } from '@/request/dance.js'
+import { sendMessage } from '@/request/dm.js'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -166,6 +168,8 @@ const songOver = ref(false)
 const muted = ref(false)
 
 const myId = computed(() => userStore.user?.userId || 0)
+// 从私信里的 + 号进来的：带上好友 userId，首页会出现“邀请好友一起跳”
+const dmFriendId = computed(() => Number(route.query.dm) || 0)
 const myName = computed(() => userStore.user?.name || (userStore.user?.email || '').split('@')[0] || '我')
 const myColor = computed(() => playerColor(myId.value))
 const isHost = computed(() => !!roomData.value && roomData.value.hostUserId === myId.value)
@@ -593,6 +597,27 @@ async function doCreate() {
     creating.value = false
   }
 }
+// 从私信邀请：建房后把邀请链接直接发给那个好友，再进大厅等他
+async function inviteDance() {
+  if (!dmFriendId.value) return
+  creating.value = true
+  try {
+    const data = await createDance(myName.value)
+    const link = location.origin + '/dance?code=' + data.code
+    await sendMessage(dmFriendId.value, t('danceInviteMsg', { link }))
+    ElMessage({ message: t('danceInviteSent'), type: 'success', plain: true })
+    mode.value = 'room'
+    roomCode.value = data.code
+    screen.value = 'lobby'
+    await refreshRoom()
+    startLobbyPolling()
+  } catch (e) {
+    // 服务端报错已由请求拦截器提示
+  } finally {
+    creating.value = false
+  }
+}
+
 async function doJoin(code) {
   const c = (code || joinCode.value || '').trim().toUpperCase()
   if (!c) return
@@ -738,6 +763,8 @@ onUnmounted(() => {
   max-width: 560px;
   margin: 0 auto;
   padding: 16px 12px 24px;
+  min-height: 100dvh;
+  box-sizing: border-box;
 }
 .game-title {
   text-align: center;

@@ -131,11 +131,12 @@
               <div class="message-body">
                 <div v-if="msg.replyTo" class="reply-quote">
                   <div class="reply-quote-name">{{ replySenderName(msg.replyTo) }}</div>
-                  <div class="reply-quote-content">{{ msg.replyTo.type === 1 ? $t('dmImageMsg') : msg.replyTo.content }}</div>
+                  <div v-if="msg.replyTo.type === 1" class="reply-quote-content">{{ $t('dmImageMsg') }}</div>
+                  <div v-else class="reply-quote-content"><template v-for="(seg, si) in linkSegments(msg.replyTo.content)" :key="si"><a v-if="seg.t === 'link'" :href="seg.v" @click.stop.prevent="onMessageLink(seg.v)">{{ seg.v }}</a><span v-else>{{ seg.v }}</span></template></div>
                 </div>
                 <el-image v-if="msg.type === 1" class="msg-image" :src="msg.content" :preview-src-list="selecting ? [] : [msg.content]" fit="cover" @contextmenu.prevent="onMessageContextMenu(msg)" />
                 <div v-else class="message-bubble" @contextmenu.prevent="onMessageContextMenu(msg)">
-                  <div class="message-content">{{ msg.content }}</div>
+                  <div class="message-content"><template v-for="(seg, si) in linkSegments(msg.content)" :key="si"><a v-if="seg.t === 'link'" :href="seg.v" @click.stop.prevent="onMessageLink(seg.v)">{{ seg.v }}</a><span v-else>{{ seg.v }}</span></template></div>
                   <div v-if="msg.isEdited" class="edited-mark">{{ $t('dmEdited') }}</div>
                 </div>
               </div>
@@ -166,6 +167,19 @@
             <span v-for="e in emojiList" :key="e" @click="insertEmoji(e)">{{ e }}</span>
           </div>
           <div class="input-bar">
+            <el-dropdown trigger="click" @command="onPlusCommand">
+              <button class="tool-btn" type="button">＋</button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="race">
+                    <span>🏃 {{ $t('cmfly') }}</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="dance">
+                    <span>💃 {{ $t('dance') }}</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <button class="tool-btn" type="button" @click="toggleEmoji">😊</button>
             <el-input
                 ref="inputRef"
@@ -213,6 +227,7 @@
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { useI18n } from "vue-i18n";
+import { useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { useUserStore } from "@/store/user.js";
 import { useDmStore, displayNameOf } from "@/store/dm.js";
@@ -231,6 +246,7 @@ import {
 } from "@/request/dm.js";
 
 const { t } = useI18n()
+const router = useRouter()
 const userStore = useUserStore();
 const dmStore = useDmStore();
 const uiStore = useUiStore();
@@ -363,6 +379,44 @@ function replySenderName(replyTo) {
   return replyTo.senderUserId === userStore.user.userId
       ? t('dmMe')
       : displayNameOf(currentFriend.value)
+}
+
+// 消息里的链接点得开：把文本按 URL 切成一段段，链接渲染成 <a>；
+// 本站的游戏邀请链接（/race?code=、/dance?code=）直接在应用内跳过去，其它链接新窗口打开
+const LINK_RE = /(https?:\/\/[^\s]+)/g
+const LINK_TRAIL = '.,!?:;。，、；：！？）)]'
+function linkSegments(text) {
+  if (!text) return []
+  const out = []
+  let last = 0
+  for (const m of text.matchAll(LINK_RE)) {
+    let url = m[0]
+    let trail = ''
+    while (url && LINK_TRAIL.includes(url[url.length - 1])) {
+      trail = url[url.length - 1] + trail
+      url = url.slice(0, -1)
+    }
+    if (m.index > last) out.push({ t: 'text', v: text.slice(last, m.index) })
+    if (url) out.push({ t: 'link', v: url })
+    if (trail) out.push({ t: 'text', v: trail })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) out.push({ t: 'text', v: text.slice(last) })
+  return out
+}
+function onMessageLink(url) {
+  try {
+    const u = new URL(url)
+    if (u.origin === location.origin && (u.pathname === '/race' || u.pathname === '/dance')) {
+      router.push(u.pathname + u.search)
+      return
+    }
+  } catch (e) { /* 不是合法链接就按普通外链处理 */ }
+  window.open(url, '_blank')
+}
+function onPlusCommand(cmd) {
+  if (!currentFriend.value) return
+  router.push({ name: cmd, query: { dm: currentFriend.value.userId } })
 }
 
 function startReply() {
@@ -1414,6 +1468,12 @@ defineOptions({
 
 .emoji-panel span:hover {
   background: var(--el-fill-color-light);
+}
+
+.message-content a,
+.reply-quote-content a {
+  color: #409eff;
+  word-break: break-all;
 }
 
 .message-content {

@@ -78,7 +78,8 @@ const routes = [
                 meta: {
                     title: 'cmfly',
                     name: 'race',
-                    menu: true
+                    menu: true,
+                    fullscreen: true
                 }
             },
             {
@@ -88,7 +89,8 @@ const routes = [
                 meta: {
                     title: 'dance',
                     name: 'dance',
-                    menu: true
+                    menu: true,
+                    fullscreen: true
                 }
             },
         ]

@@ -25,7 +25,7 @@
       </template>
     </el-dropdown>
 
-    <!-- 底部导航：主页 / 联系人 / 厘米FLY / 设置 / 我的 -->
+    <!-- 底部导航：主页 / 联系人 / 设置 / 我的（游戏不占导航，从私信里的 + 号进） -->
     <nav class="mobile-nav">
       <button class="nav-item" :class="{ active: activeTab === 'email' }" @click="goHome">
         <span class="nav-icon">
@@ -36,10 +36,6 @@
       <button class="nav-item" :class="{ active: activeTab === 'contacts' }" @click="goContacts">
         <Icon icon="si:user-alt-2-line" width="24" height="24" />
         <span class="nav-label">{{ $t('contacts') }}</span>
-      </button>
-      <button class="nav-item" :class="{ active: activeTab === 'race' }" @click="goRace">
-        <Icon icon="mdi:run-fast" width="24" height="24" />
-        <span class="nav-label">{{ $t('cmfly') }}</span>
       </button>
       <button class="nav-item" :class="{ active: activeTab === 'setting' }" @click="goSetting">
         <Icon icon="fluent:settings-48-regular" width="24" height="24" />
@@ -92,9 +88,6 @@ function goDm() {
 }
 function goContacts() {
   router.push({ name: 'contacts' })
-}
-function goRace() {
-  router.push({ name: 'race' })
 }
 function goSetting() {
   router.push({ name: 'setting' })

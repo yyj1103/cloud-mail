@@ -1,5 +1,9 @@
 <template>
-  <el-container class="layout">
+  <!-- 全屏游戏（酷跑对战 / 冰面炫舞）：只显示游戏界面，不显示顶栏、侧栏、底部导航、页脚 -->
+  <div v-if="isFullscreen" class="fullscreen-view">
+    <router-view />
+  </div>
+  <el-container v-else class="layout">
     <el-aside
         class="aside"
         :class="uiStore.asideShow ? 'aside-show' : 'el-aside-hide'">
@@ -27,6 +31,15 @@
   <writer ref="writerRef" />
 </template>
 
+<style lang="scss" scoped>
+.fullscreen-view {
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--el-bg-color);
+}
+</style>
+
 <script setup>
 import Aside from '@/layout/aside/index.vue'
 import Header from '@/layout/header/index.vue'
@@ -41,6 +54,8 @@ import BottomNav from '@/layout/bottom-nav/index.vue'
 const uiStore = useUiStore();
 const route = useRoute();
 const dmStore = useDmStore();
+// 全屏游戏：路由 meta.fullscreen 为 true 时整页只剩游戏
+const isFullscreen = computed(() => !!route.meta?.fullscreen)
 // 私信聊天窗口内：底部胶囊导航是隐藏的，内容区不用留它的空位
 const isDmChat = computed(() => route.path.startsWith('/dm') && dmStore.inChat)
 // 私信页（/dm）不显示站点页脚：对话页里页脚会和输入条下的发图隐私说明挤在一起重叠；

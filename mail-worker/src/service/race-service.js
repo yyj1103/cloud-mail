@@ -187,12 +187,14 @@ const raceService = {
 		if (!row) {
 			throw new BizError(t('roomNotFound'));
 		}
-		let distance = Math.max(0, Math.min(room.track_length, Number(params.distance) || 0));
+		// 无尽跑酷没有终点线：距离不按 1000m 赛道截断，只做一个很大的上限；
+		// 完赛由客户端上报（3 条命撞满），服务端只认 finished 标记记一次存活时间
+		let distance = Math.max(0, Math.min(100000, Number(params.distance) || 0));
 		let score = Math.max(-9999, Math.min(99999, Math.floor(Number(params.score) || 0)));
 		let finished = row.finished ? 1 : 0;
 		let finishMs = row.finish_ms;
-		// 第一次冲线：记下用时，之后就算退回也不改
-		if (!finished && distance >= room.track_length) {
+		// 第一次跑结束：记下存活时间，之后就算退回也不改
+		if (!finished && params.finished) {
 			finished = 1;
 			finishMs = room.started_at ? Date.now() - room.started_at : 0;
 		}
