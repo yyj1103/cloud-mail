@@ -32,7 +32,7 @@ const zh = {
     raceJoinRoom: '加入房间',
     racePractice: '单人练习',
     racePracticeDesc: '和 3 个机器人练练手',
-    raceHowTo: '快速点击加速，红包加分加速，炮竹扣分减速',
+    raceHowTo: '顺着坡度点按加速，下坡时点按更快，红包金元宝加分',
     raceRoomCode: '房间码',
     raceCopyInvite: '复制邀请链接',
     raceInviteCopied: '邀请链接已复制，发给好友就能一起跑',

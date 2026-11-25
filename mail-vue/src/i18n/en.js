@@ -32,7 +32,7 @@ const en = {
     raceJoinRoom: 'Join room',
     racePractice: 'Practice solo',
     racePracticeDesc: 'Warm up against 3 bots',
-    raceHowTo: 'Tap fast to speed up — red packets add points and boost, firecrackers cost points and slow you down.',
+    raceHowTo: 'Tap with the slope to speed up — taps are stronger on downhills; red packets and gold ingots add points.',
     raceRoomCode: 'Room code',
     raceCopyInvite: 'Copy invite link',
     raceInviteCopied: 'Invite link copied — send it to friends to race together',

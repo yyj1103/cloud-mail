@@ -97,18 +97,19 @@ import { useUserStore } from '@/store/user.js'
 import { createRace, joinRace, getRoom, startRace, updateProgress, leaveRace } from '@/request/race.js'
 import { sendMessage } from '@/request/dm.js'
 
-// —— 赛道是固定的：所有人跑同一条 1000 米坡道，红包、炮竹和金元宝位置一样 ——
+// —— 赛道是固定的：所有人跑同一条 1000 米坡道，红包和金元宝位置一样 ——
 const TRACK = 1000
 const RED_PACKETS = [80, 150, 230, 310, 380, 470, 540, 620, 700, 790, 860, 930]
-const FIRECRACKERS = [120, 200, 280, 350, 430, 510, 590, 660, 750, 830, 900, 960]
 const INGOTS = [60, 180, 260, 340, 420, 500, 580, 680, 760, 840, 920, 980]
-const BASE_SPEED = 4      // 不点也会慢慢往下滑
-const TAP_ADD = 2.2       // 每点一下加的速度
-const MAX_SPEED = 24
-const DECAY = 0.55        // 速度向下滑速度回落的快慢
+const BASE_SPEED = 8       // 不点也会慢慢往下滑
+const TAP_ADD = 2.2        // 每点一下加的速度（下坡时按坡度放大）
+const MAX_SPEED = 36
+const MIN_SPEED = 2        // 速度下限：上坡再陡也不会停死
+const DECAY = 0.55         // 速度向下滑速度回落的快慢
+const SLOPE_GRAVITY = 4    // 坡度重力：下坡加速、上坡减速的强度
+const BOOST_SLOPE_FACTOR = 1.2 // 点按在下坡时额外放大多少
 const PACKET_BOOST = 3
 const PACKET_SCORE = 100
-const CRACKER_SCORE = 50
 const INGOT_SCORE = 50
 const COLORS = ['#ff5a5a', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899']
 const BOT_NAMES = ['阿飞', '小美', '豆豆']
@@ -153,7 +154,7 @@ const fmtElapsed = computed(() => {
   return `${(ms / 1000).toFixed(2)}s`
 })
 
-// —— 小音效（点加速 / 吃红包 / 踩炮竹 / 冲线），静音钮控制 ——
+// —— 小音效（点加速 / 吃红包 / 冲线），静音钮控制 ——
 let audioCtx = null
 function tone(freq, dur, type = 'sine', vol = 0.1, delay = 0) {
   if (muted.value) return
@@ -174,7 +175,6 @@ function tone(freq, dur, type = 'sine', vol = 0.1, delay = 0) {
   } catch (e) { /* 没声音就算了 */ }
 }
 function playChime() { tone(880, 0.12, 'sine', 0.1); tone(1318, 0.16, 'sine', 0.1, 0.09) }
-function playPop() { tone(160, 0.15, 'square', 0.07) }
 function toggleMute() { muted.value = !muted.value }
 
 // —— 每个人的跑步状态（我和机器人共用同一套物理） ——
@@ -210,7 +210,7 @@ function makeRunner(userId, name, avatar, email) {
   return {
     userId, name, avatar: avatar || '', email: email || '',
     distance: 0, speed: 0, score: 0, finished: false, finishMs: null,
-    gotPackets: new Set(), hitCrackers: new Set(), gotIngots: new Set(), botTarget: 0, botTimer: 0
+    gotPackets: new Set(), gotIngots: new Set(), botTarget: 0, botTimer: 0
   }
 }
 
@@ -466,12 +466,15 @@ async function pollRace() {
   checkFinish()
 }
 
-// —— 速度：不点就往 4m/s 回落，点一下 +2.2；红包 +3，炮竹减半 ——
+// —— 速度：坡度定快慢（下坡加速、上坡减速），点按顺着坡度放大；不点就往 8m/s 回落 ——
 function onBoost() {
   if (screen.value !== 'race' || countdown.value > 0) return
   const m = runners.value.find(r => r.userId === myId.value)
   if (!m || m.finished) return
-  m.speed = Math.min(MAX_SPEED, m.speed + TAP_ADD)
+  // 下坡时点按更有效：坡越陡（slopeK 越大）这一按加得越多，上坡就是普通一按
+  const g = slopeK(m.distance)
+  const boost = TAP_ADD * (1 + BOOST_SLOPE_FACTOR * Math.max(0, g))
+  m.speed = Math.min(MAX_SPEED, m.speed + boost)
   const now = performance.now()
   if (now - lastTick > 90) {
     lastTick = now
@@ -494,16 +497,19 @@ function stepRunner(r, dt, now) {
     if (countdown.value > 0) { r.speed = 0; return }
     r.speed += (BASE_SPEED - r.speed) * DECAY * dt
   } else {
-    // 机器人：目标速度随机游走
+    // 机器人：目标速度随机游走（跟新版速度走，练手才有得比）
     r.botTimer -= dt
     if (r.botTimer <= 0) {
       r.botTimer = 0.4 + Math.random() * 0.6
-      r.botTarget = 11 + Math.random() * 6
+      r.botTarget = 24 + Math.random() * 6
     }
     r.speed += (r.botTarget - r.speed) * 1.2 * dt
   }
+  // 坡度重力：下坡加速、上坡减速（所有人同一条坡，同一套物理）
+  r.speed += SLOPE_GRAVITY * slopeK(r.distance) * dt
+  r.speed = Math.max(MIN_SPEED, Math.min(MAX_SPEED, r.speed))
   r.distance += r.speed * dt
-  // 红包 / 炮竹 / 金元宝：按固定位置判定，每人各吃各的
+  // 红包 / 金元宝：按固定位置判定，每人各吃各的
   for (const pos of RED_PACKETS) {
     if (r.distance >= pos && !r.gotPackets.has(pos)) {
       r.gotPackets.add(pos)
@@ -512,17 +518,6 @@ function stepRunner(r, dt, now) {
       if (r.userId === myId.value) {
         ElMessage({ message: t('raceRedPacket'), type: 'success', plain: true, grouping: true })
         playChime()
-      }
-    }
-  }
-  for (const pos of FIRECRACKERS) {
-    if (r.distance >= pos && !r.hitCrackers.has(pos)) {
-      r.hitCrackers.add(pos)
-      r.score = Math.max(0, r.score - CRACKER_SCORE)
-      r.speed *= 0.5
-      if (r.userId === myId.value) {
-        ElMessage({ message: t('raceFirecracker'), type: 'warning', plain: true, grouping: true })
-        playPop()
       }
     }
   }
@@ -839,7 +834,7 @@ function draw(ctx, canvas, timeSec) {
     ctx.fillText('终点', fx, fy - 47)
   }
 
-  // —— 红包 / 炮竹 / 金元宝 ——
+  // —— 红包 / 金元宝 ——
   for (const pos of RED_PACKETS) {
     const x = toX(pos)
     if (x < -30 || x > W + 30) continue
@@ -853,24 +848,6 @@ function draw(ctx, canvas, timeSec) {
     ctx.font = 'bold 13px sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText('¥', x, y - 11 + bobY)
-  }
-  for (const pos of FIRECRACKERS) {
-    const x = toX(pos)
-    if (x < -30 || x > W + 30) continue
-    const y = toY(pos)
-    ctx.fillStyle = '#c0392b'
-    roundRect(ctx, x - 6, y - 20, 12, 20, 3)
-    ctx.fill()
-    ctx.strokeStyle = '#8e44ad'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(x, y - 20)
-    ctx.quadraticCurveTo(x + 6, y - 28, x + 10, y - 24)
-    ctx.stroke()
-    ctx.fillStyle = '#ffd76a'
-    ctx.beginPath()
-    ctx.arc(x + 10, y - 24, 2.5 + Math.sin(timeSec * 8 + pos) * 0.8, 0, Math.PI * 2)
-    ctx.fill()
   }
   for (const pos of INGOTS) {
     const x = toX(pos)
