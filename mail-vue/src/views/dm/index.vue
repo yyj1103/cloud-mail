@@ -177,6 +177,9 @@
                   <el-dropdown-item command="piano">
                     <span>🎹 {{ $t('piano') }}</span>
                   </el-dropdown-item>
+                  <el-dropdown-item command="ra">
+                    <span>⚔️ {{ $t('steelDawn') }}</span>
+                  </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -407,7 +410,7 @@ function linkSegments(text) {
 function onMessageLink(url) {
   try {
     const u = new URL(url)
-    if (u.origin === location.origin && (u.pathname === '/race' || u.pathname === '/piano' || u.pathname === '/dance')) {
+    if (u.origin === location.origin && (u.pathname === '/race' || u.pathname === '/piano' || u.pathname === '/ra' || u.pathname === '/dance')) {
       router.push(u.pathname + u.search)
       return
     }
