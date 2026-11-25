@@ -54,89 +54,57 @@
       <el-button link class="leave-link" @click="doLeave">{{ $t('pianoLeave') }}</el-button>
     </div>
 
-    <!-- 弹琴 -->
+    <!-- 弹琴：钢琴块 2 式，4 轨黑块下落 -->
     <div v-else-if="screen === 'play'" class="play">
-      <div class="top-bar">
-        <div class="score-box">
-          <div class="score-label">{{ $t('pianoScore') }}</div>
-          <div class="score-num">{{ score }}</div>
-        </div>
-        <div class="combo-box" :class="{ hot: combo >= 10 }">
-          <div class="combo-label">{{ $t('pianoCombo') }}</div>
-          <div class="combo-num">{{ combo }}</div>
-        </div>
-        <div class="song-chip">{{ songName(currentSongId) }}</div>
-        <el-button link class="mute-btn" @click="muted = !muted">{{ muted ? $t('pianoMuted') : $t('pianoMusic') }}</el-button>
-      </div>
-      <div class="progress-bar"><div class="progress-fill" :style="{ width: songProgress + '%' }"></div></div>
-      <div class="live-list">
-        <div v-for="p in livePlayers" :key="p.userId" class="live-row" :class="{ me: p.userId === myId }">
-          <span class="player-dot" :style="{ background: p.color }"></span>
-          <span class="live-name">{{ p.name }}</span>
-          <span class="live-score">{{ p.score }}</span>
-          <span v-if="p.finished" class="finished-tag">{{ $t('pianoFinished') }}</span>
-        </div>
-      </div>
-      <div class="stage">
-        <div class="lanes-wrap" @pointerdown="onStageTap">
+      <div class="play-stage">
+        <canvas ref="bgCanvasRef" class="bg-canvas"></canvas>
+        <div class="hud-combo">{{ combo }}</div>
+        <div class="hud-score">{{ fmtScore }}</div>
+        <button class="pause-btn" type="button" @click="togglePause">II</button>
+        <div v-if="portraitHint" class="rotate-hint" @click="portraitHint = false">横过来玩更爽</div>
+        <div class="lanes-wrap" @pointerdown="onStageTap" @pointerup="onStagePointerUp" @pointercancel="onStagePointerUp">
           <div class="lanes">
-            <div v-for="lane in 8" :key="lane" class="lane" :class="'lane-' + lane">
+            <div v-for="lane in 4" :key="lane" class="lane">
               <div
                 v-for="note in visibleNotes(lane - 1)"
                 :key="note.time + '-' + note.lane"
-                class="note"
-                :style="{ top: noteTop(note) + '%', background: LANE_COLORS[note.lane] }"
-              >{{ NOTE_NAMES[note.lane] }}</div>
+                class="tile"
+                :class="{ hold: note.isHold, holding: note.holding }"
+                :style="tileStyle(note)"
+              ></div>
+              <div v-if="flashKey[lane - 1] > 0" class="lane-flash" :key="'f' + lane + '-' + flashKey[lane - 1]"></div>
             </div>
           </div>
-          <div class="judge-line"></div>
-          <div v-if="judgePop" :key="judgePopKey" class="judge-pop" :class="'pop-' + judgePopClass">{{ judgePop }}</div>
+          <div class="hit-zone"></div>
+          <div v-for="f in floats" :key="f.id" class="float-num" :style="{ left: (f.lane * 25 + 12.5) + '%' }">+{{ f.val }}</div>
           <div v-if="countdown > 0" class="countdown">{{ countdown }}</div>
           <div v-if="countdown === 0 && songOver" class="countdown small">{{ $t('pianoDone') }}</div>
-        </div>
-        <div class="keyboard">
-          <div class="black-keys" aria-hidden="true">
-            <span v-for="b in BLACK_KEY_POS" :key="b" :style="{ left: b + '%' }"></span>
+          <div v-if="paused" class="pause-overlay">
+            <div class="pause-title">已暂停</div>
+            <el-button type="primary" size="large" @click="togglePause">继续</el-button>
+            <el-button size="large" @click="muted = !muted">{{ muted ? '🔇 音乐关' : '🔊 音乐开' }}</el-button>
           </div>
-          <button
-            v-for="lane in 8"
-            :key="lane"
-            class="white-key"
-            :class="{ active: keyDown[lane - 1] }"
-            type="button"
-            @pointerdown.prevent="hit(lane - 1)"
-          >
-            <span class="key-name">{{ NOTE_NAMES[lane - 1] }}</span>
-            <span class="key-letter">{{ KEY_LETTERS[lane - 1] }}</span>
-            <span class="key-hint">{{ KEY_HINTS[lane - 1] }}</span>
-          </button>
+        </div>
+        <div class="bottom-bar">
+          <span class="song-name">{{ songName(currentSongId) }}</span>
+          <span class="diff-label">Lv.{{ songLevel }}</span>
         </div>
       </div>
-      <div class="pad-hint">{{ $t('pianoKeyboardHint') }}</div>
     </div>
 
     <!-- 自由弹琴 -->
     <div v-else-if="screen === 'free'" class="free">
       <div class="game-title small">🎹 {{ $t('pianoFreePlay') }}</div>
       <div class="free-hint">{{ $t('pianoFreePlayHint') }}</div>
-      <div class="stage free-stage">
-        <div class="keyboard big">
-          <div class="black-keys" aria-hidden="true">
-            <span v-for="b in BLACK_KEY_POS" :key="b" :style="{ left: b + '%' }"></span>
-          </div>
-          <button
-            v-for="lane in 8"
-            :key="lane"
-            class="white-key"
-            :class="{ active: keyDown[lane - 1] }"
-            type="button"
-            @pointerdown.prevent="hit(lane - 1)"
-          >
-            <span class="key-name">{{ NOTE_NAMES[lane - 1] }}</span>
-            <span class="key-letter">{{ KEY_LETTERS[lane - 1] }}</span>
-            <span class="key-hint">{{ KEY_HINTS[lane - 1] }}</span>
-          </button>
-        </div>
+      <div class="free-lanes">
+        <button
+          v-for="lane in 4"
+          :key="lane"
+          class="free-lane"
+          :class="{ active: keyDown[lane - 1] }"
+          type="button"
+          @pointerdown.prevent="hit(lane - 1)"
+        >{{ NOTE_NAMES[lane - 1] }}</button>
       </div>
       <el-button size="large" class="home-btn" @click="backHome">{{ $t('pianoBack') }}</el-button>
     </div>
@@ -186,19 +154,16 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-// ---- 钢琴：8 个白键 C4–C5 ----
-const FREQS = [261.63, 293.66, 329.63, 349.23, 392.0, 440.0, 493.88, 523.25]
-const NOTE_NAMES = ['哆', '来', '咪', '发', '索', '拉', '西', '哆']
-const KEY_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C']
-const KEY_HINTS = ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K']
-const LANE_COLORS = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#4dabf7', '#9775fa', '#f783ac']
-const BLACK_KEY_POS = [12.5, 25, 50, 62.5, 75]
-const KEY_MAP = { KeyA: 0, KeyS: 1, KeyD: 2, KeyF: 3, KeyG: 4, KeyH: 5, KeyJ: 6, KeyK: 7 }
+// ---- 钢琴块 2 式：4 轨，C 大调琶音 C4 E4 G4 C5 ----
+const FREQS = [261.63, 329.63, 392.0, 523.25]
+const NOTE_NAMES = ['哆', '咪', '索', '哆']
+const KEY_MAP = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 }
 const TRAVEL = 1.8
 const PERFECT_WIN = 0.06
 const GREAT_WIN = 0.12
 const GOOD_WIN = 0.2
-const JUDGE_LINE = 82
+const JUDGE_LINE = 88
+const HOLD_TICK_SCORE = 10
 const COLORS = ['#f56c6c', '#e6a23c', '#67c23a', '#409eff', '#b37feb', '#ff85c0', '#13c2c2', '#ff7a45']
 const BOT_DEFS = [
   { name: '小琴', skill: 0.72 },
@@ -208,10 +173,10 @@ const BOT_DEFS = [
 
 // ---- 曲谱：每条 [lane, beats]，顺序旋律；beatSec = 60 / bpm ----
 const SONGS = {
-  twinkle: { id: 'twinkle', nameKey: 'pianoSongTwinkle', bpm: 100, notes: [[0, 1], [0, 1], [4, 1], [4, 1], [5, 1], [5, 1], [4, 2], [3, 1], [3, 1], [2, 1], [2, 1], [1, 1], [1, 1], [0, 2], [4, 1], [4, 1], [3, 1], [3, 1], [2, 1], [2, 1], [1, 2], [4, 1], [4, 1], [3, 1], [3, 1], [2, 1], [2, 1], [1, 2], [0, 1], [0, 1], [4, 1], [4, 1], [5, 1], [5, 1], [4, 2], [3, 1], [3, 1], [2, 1], [2, 1], [1, 1], [1, 1], [0, 2]] },
-  ode: { id: 'ode', nameKey: 'pianoSongOde', bpm: 112, notes: [[2, 1], [2, 1], [3, 1], [4, 1], [4, 1], [3, 1], [2, 1], [1, 1], [0, 1], [0, 1], [1, 1], [2, 1], [2, 1], [1, 2], [2, 1], [2, 1], [3, 1], [4, 1], [4, 1], [3, 1], [2, 1], [1, 1], [0, 1], [0, 1], [1, 1], [2, 1], [1, 1], [0, 2], [2, 1], [2, 1], [3, 1], [4, 1], [4, 1], [3, 1], [2, 1], [1, 1], [0, 1], [0, 1], [1, 1], [2, 1], [1, 1], [0, 2]] },
-  tiger: { id: 'tiger', nameKey: 'pianoSongTiger', bpm: 112, notes: [[0, 1], [1, 1], [2, 1], [0, 1], [0, 1], [1, 1], [2, 1], [0, 1], [2, 1], [3, 1], [4, 2], [2, 1], [3, 1], [4, 2], [4, 1], [5, 1], [4, 1], [3, 1], [2, 1], [0, 1], [4, 1], [5, 1], [4, 1], [3, 1], [2, 1], [0, 1], [0, 1], [4, 1], [0, 2], [0, 1], [4, 1], [0, 2]] },
-  jingle: { id: 'jingle', nameKey: 'pianoSongJingle', bpm: 120, notes: [[2, 1], [2, 1], [2, 2], [2, 1], [2, 1], [2, 2], [2, 1], [4, 1], [0, 1], [1, 1], [2, 4], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [2, 1], [2, 1], [2, 1], [2, 1], [1, 1], [1, 1], [2, 1], [1, 1], [4, 2]] }
+  twinkle: { id: 'twinkle', nameKey: 'pianoSongTwinkle', bpm: 100, level: 8, notes: [[0, 1], [0, 1], [0, 1], [0, 1], [1, 1], [1, 1], [0, 2], [3, 1], [3, 1], [2, 1], [2, 1], [1, 1], [1, 1], [0, 2], [0, 1], [0, 1], [3, 1], [3, 1], [2, 1], [2, 1], [1, 2], [0, 1], [0, 1], [3, 1], [3, 1], [2, 1], [2, 1], [1, 2], [0, 1], [0, 1], [0, 1], [0, 1], [1, 1], [1, 1], [0, 2], [3, 1], [3, 1], [2, 1], [2, 1], [1, 1], [1, 1], [0, 2]] },
+  ode: { id: 'ode', nameKey: 'pianoSongOde', bpm: 112, level: 9, notes: [[2, 1], [2, 1], [3, 1], [0, 1], [0, 1], [3, 1], [2, 1], [1, 1], [0, 1], [0, 1], [1, 1], [2, 1], [2, 1], [1, 2], [2, 1], [2, 1], [3, 1], [0, 1], [0, 1], [3, 1], [2, 1], [1, 1], [0, 1], [0, 1], [1, 1], [2, 1], [1, 1], [0, 2], [2, 1], [2, 1], [3, 1], [0, 1], [0, 1], [3, 1], [2, 1], [1, 1], [0, 1], [0, 1], [1, 1], [2, 1], [1, 1], [0, 2]] },
+  tiger: { id: 'tiger', nameKey: 'pianoSongTiger', bpm: 112, level: 9, notes: [[0, 1], [1, 1], [2, 1], [0, 1], [0, 1], [1, 1], [2, 1], [0, 1], [2, 1], [3, 1], [0, 2], [2, 1], [3, 1], [0, 2], [0, 1], [1, 1], [0, 1], [3, 1], [2, 1], [0, 1], [0, 1], [1, 1], [0, 1], [3, 1], [2, 1], [0, 1], [0, 1], [0, 1], [0, 2], [0, 1], [0, 1], [0, 2]] },
+  jingle: { id: 'jingle', nameKey: 'pianoSongJingle', bpm: 120, level: 10, notes: [[2, 1], [2, 1], [2, 2], [2, 1], [2, 1], [2, 2], [2, 1], [0, 1], [0, 1], [1, 1], [2, 4], [3, 1], [3, 1], [3, 1], [3, 1], [3, 1], [2, 1], [2, 1], [2, 1], [2, 1], [1, 1], [1, 1], [2, 1], [1, 1], [0, 2]] }
 }
 const songList = Object.values(SONGS)
 
@@ -240,11 +205,7 @@ const currentSongId = computed(() => {
   if (mode.value === 'room' && roomData.value?.song && SONGS[roomData.value.song]) return roomData.value.song
   return selectedSongId.value
 })
-const songEnd = computed(() => (chart.value.length ? chart.value[chart.value.length - 1].time : 0) + 1.2)
-const songProgress = computed(() => {
-  if (!songEnd.value) return 0
-  return Math.max(0, Math.min(100, (nowSec.value / songEnd.value) * 100))
-})
+const songEnd = computed(() => (chart.value.length ? Math.max(...chart.value.map(n => n.end)) : 0) + 1.2)
 
 const chart = ref([])
 const nowSec = ref(0)
@@ -252,11 +213,16 @@ const score = ref(0)
 const combo = ref(0)
 const maxCombo = ref(0)
 const counts = ref({ perfect: 0, great: 0, good: 0, miss: 0 })
-const judgePop = ref('')
-const judgePopKey = ref(0)
-const judgePopClass = ref('')
-const keyDown = ref(Array(8).fill(false))
+const keyDown = ref(Array(4).fill(false))
 const bots = ref([])
+const paused = ref(false)
+const portraitHint = ref(false)
+const floats = ref([])
+const flashKey = ref([0, 0, 0, 0])
+const bgCanvasRef = ref(null)
+let floatId = 0
+const fmtScore = computed(() => String(score.value).padStart(7, '0'))
+const songLevel = computed(() => (SONGS[currentSongId.value] || SONGS.twinkle).level || 8)
 
 const myAccuracy = computed(() => {
   const c = counts.value
@@ -270,21 +236,6 @@ const myGrade = computed(() => {
   if (a >= 90) return 'A'
   if (a >= 80) return 'B'
   return 'C'
-})
-
-const livePlayers = computed(() => {
-  if (mode.value === 'practice') {
-    const list = [{ userId: myId.value, name: myName.value, color: myColor.value, score: score.value, finished: songOver.value }]
-    for (const b of bots.value) list.push({ userId: b.userId, name: b.name, color: b.color, score: b.score, finished: songOver.value })
-    return list.sort((a, b) => b.score - a.score)
-  }
-  return (roomData.value?.players || []).map(p => ({
-    userId: p.userId,
-    name: p.name || p.email || t('pianoYou'),
-    color: playerColor(p.userId),
-    score: p.userId === myId.value ? score.value : p.score,
-    finished: p.userId === myId.value ? songOver.value : !!p.finished
-  })).sort((a, b) => b.score - a.score)
 })
 
 const rankedPlayers = computed(() => {
@@ -324,18 +275,27 @@ function buildChart(songId) {
   const list = []
   let time = 0
   for (const [lane, beats] of song.notes) {
-    list.push({ time, lane, judged: false, result: '' })
-    time += beats * beatSec
+    const len = beats * beatSec
+    list.push({ time, end: time + len, len, lane, isHold: beats >= 2, judged: false, holding: false, result: '', lastTick: 0, pointerId: null })
+    time += len
   }
   return list
 }
 function visibleNotes(lane) {
   const now = nowSec.value
-  return chart.value.filter(n => n.lane === lane && !n.judged && (n.time - now) <= TRAVEL && (n.time - now) >= -0.25)
+  return chart.value.filter(n => n.lane === lane && !n.judged && (n.time - now) <= TRAVEL && (n.end - now) >= -0.25)
 }
-function noteTop(note) {
-  const remain = note.time - nowSec.value
-  return Math.max(0, JUDGE_LINE * (1 - remain / TRAVEL))
+// 黑块位置：普通块按头算，长音块按中点算、高度按音长算
+function tileStyle(note) {
+  const now = nowSec.value
+  if (note.isHold) {
+    const mid = note.time + note.len / 2
+    const top = JUDGE_LINE * (1 - (mid - now) / TRAVEL)
+    const h = (note.len / TRAVEL) * JUDGE_LINE
+    return { top: Math.max(0, top) + '%', height: h + '%' }
+  }
+  const remain = note.time - now
+  return { top: Math.max(0, JUDGE_LINE * (1 - remain / TRAVEL)) + '%', height: '46px' }
 }
 
 // ---- WebAudio 钢琴音色（无外部音频文件，失败就静音玩） ----
@@ -414,35 +374,32 @@ function applyJudge(res) {
   if (combo.value > maxCombo.value) maxCombo.value = combo.value
   const base = res === 'perfect' ? 300 : res === 'great' ? 150 : 50
   const mult = 1 + Math.min(combo.value, 20) * 0.05
-  score.value += Math.round(base * mult)
-  judgePop.value = res === 'perfect' ? 'Perfect' : res === 'great' ? 'Great' : 'Good'
-  judgePopClass.value = res
-  judgePopKey.value++
+  const gained = Math.round(base * mult)
+  score.value += gained
+  return gained
 }
 function onMiss() {
   combo.value = 0
   counts.value.miss++
-  judgePop.value = 'Miss'
-  judgePopClass.value = 'miss'
-  judgePopKey.value++
   playMiss()
 }
 function setKeyDown(lane, val) {
   keyDown.value[lane] = val
 }
-function hit(lane) {
+function hit(lane, pointerId) {
   ensureAudio()
   playNote(lane)
   setKeyDown(lane, true)
   setTimeout(() => setKeyDown(lane, false), 160)
+  flashKey.value[lane]++
   // 自由弹琴：只发声，不判定、不计分
   if (screen.value === 'free') return
-  if (screen.value !== 'play' || countdown.value > 0 || songOver.value) return
+  if (screen.value !== 'play' || countdown.value > 0 || songOver.value || paused.value) return
   const now = nowSec.value
   let best = null
   let bestDt = Infinity
   for (const n of chart.value) {
-    if (n.lane !== lane || n.judged) continue
+    if (n.lane !== lane || n.judged || n.holding) continue
     const dt = Math.abs(n.time - now)
     if (dt <= GOOD_WIN && dt < bestDt) {
       best = n
@@ -450,28 +407,77 @@ function hit(lane) {
     }
   }
   if (!best) return
-  best.judged = true
   const res = bestDt <= PERFECT_WIN ? 'perfect' : bestDt <= GREAT_WIN ? 'great' : 'good'
   best.result = res
-  applyJudge(res)
+  const gained = applyJudge(res)
+  if (best.isHold) {
+    best.holding = true
+    best.lastTick = now
+    best.pointerId = pointerId == null ? -1 : pointerId
+  } else {
+    best.judged = true
+  }
+  pushFloat(lane, gained)
 }
-// 点下落的音符：按横坐标换算成对应的琴键
+function pushFloat(lane, val) {
+  const id = ++floatId
+  floats.value.push({ id, lane, val })
+  setTimeout(() => {
+    floats.value = floats.value.filter(f => f.id !== id)
+  }, 750)
+}
+// 松开手指：结束该轨正在按的长音（提前松开不扣分，只是不再加按住的分）
+function endHold(lane, pointerId) {
+  for (const n of chart.value) {
+    if (n.lane === lane && n.holding && (pointerId == null || n.pointerId === pointerId || n.pointerId === -1)) {
+      n.holding = false
+      n.judged = true
+    }
+  }
+}
+function onStagePointerUp(e) {
+  if (screen.value !== 'play') return
+  const rect = e.currentTarget.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const lane = Math.max(0, Math.min(3, Math.floor((x / rect.width) * 4)))
+  endHold(lane, e.pointerId)
+}
+function onAnyPointerUp(e) {
+  if (screen.value !== 'play') return
+  for (const n of chart.value) {
+    if (n.holding && n.pointerId === e.pointerId) {
+      n.holding = false
+      n.judged = true
+    }
+  }
+}
+// 点下落的黑块：按横坐标换算成对应的轨（多指同时点按各自触发）
 function onStageTap(e) {
   if (screen.value !== 'play') return
   const rect = e.currentTarget.getBoundingClientRect()
   const x = e.clientX - rect.left
-  const lane = Math.max(0, Math.min(7, Math.floor((x / rect.width) * 8)))
-  hit(lane)
+  const lane = Math.max(0, Math.min(3, Math.floor((x / rect.width) * 4)))
+  hit(lane, e.pointerId)
 }
 
 // ---- 主循环 ----
 let rafId = 0
 let songStartPerf = 0
 function loop() {
-  if (screen.value !== 'play' || countdown.value > 0) return
+  if (screen.value !== 'play' || countdown.value > 0 || paused.value) return
   const now = (performance.now() - songStartPerf) / 1000
   nowSec.value = now
   for (const n of chart.value) {
+    if (n.holding) {
+      if (now >= n.end) {
+        n.holding = false
+        n.judged = true
+      } else if (now - n.lastTick >= 0.1) {
+        n.lastTick = now
+        score.value += HOLD_TICK_SCORE
+      }
+      continue
+    }
     if (!n.judged && now - n.time > GOOD_WIN) {
       n.judged = true
       n.result = 'miss'
@@ -497,7 +503,9 @@ function resetStats() {
   combo.value = 0
   maxCombo.value = 0
   counts.value = { perfect: 0, great: 0, good: 0, miss: 0 }
-  judgePop.value = ''
+  floats.value = []
+  flashKey.value = [0, 0, 0, 0]
+  paused.value = false
   songOver.value = false
 }
 let countdownTimer = null
@@ -509,7 +517,9 @@ function beginCountdown() {
     chart.value = buildChart(currentSongId.value)
   }
   countdown.value = 3
+  portraitHint.value = window.innerHeight > window.innerWidth
   ensureAudio()
+  startBgLoop()
   countdownTimer = setInterval(() => {
     countdown.value--
     if (countdown.value <= 0) {
@@ -519,6 +529,110 @@ function beginCountdown() {
       startSong()
     }
   }, 1000)
+}
+
+// ---- 暂停 / 继续 ----
+let pausedAtPerf = 0
+function togglePause() {
+  if (screen.value !== 'play' || countdown.value > 0 || songOver.value) return
+  if (!paused.value) {
+    paused.value = true
+    pausedAtPerf = performance.now()
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
+  } else {
+    paused.value = false
+    songStartPerf += performance.now() - pausedAtPerf
+    rafId = requestAnimationFrame(loop)
+  }
+}
+
+// ---- 背景：深棕底 + 细白几何线 + 金色点缀，缓慢漂移 ----
+let bgRaf = 0
+let bgShapes = null
+function mulberry32(seed) {
+  let a = seed
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+function initBgShapes() {
+  const rand = mulberry32(20261125)
+  const kinds = ['line', 'rect', 'circle', 'arc', 'diag']
+  bgShapes = []
+  for (let i = 0; i < 26; i++) {
+    bgShapes.push({
+      kind: kinds[Math.floor(rand() * kinds.length)],
+      x: rand(), y: rand(),
+      s: 0.03 + rand() * 0.12,
+      rot: rand() * Math.PI,
+      gold: rand() < 0.25,
+      a: 0.04 + rand() * 0.08,
+      sp: 0.2 + rand() * 0.6,
+      ph: rand() * Math.PI * 2
+    })
+  }
+}
+function drawBg(t) {
+  const c = bgCanvasRef.value
+  if (!c) return
+  const w = c.clientWidth
+  const h = c.clientHeight
+  if (!w || !h) return
+  const dpr = window.devicePixelRatio || 1
+  if (c.width !== Math.floor(w * dpr) || c.height !== Math.floor(h * dpr)) {
+    c.width = Math.floor(w * dpr)
+    c.height = Math.floor(h * dpr)
+  }
+  const ctx = c.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.fillStyle = '#171210'
+  ctx.fillRect(0, 0, w, h)
+  const glow = ctx.createRadialGradient(w / 2, 0, 0, w / 2, 0, Math.max(w, h) * 0.7)
+  glow.addColorStop(0, 'rgba(120, 110, 200, 0.10)')
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)')
+  ctx.fillStyle = glow
+  ctx.fillRect(0, 0, w, h)
+  if (!bgShapes) initBgShapes()
+  const base = Math.max(w, h)
+  for (const s of bgShapes) {
+    const dx = Math.sin(t * 0.001 * s.sp + s.ph) * 6
+    const dy = Math.cos(t * 0.001 * s.sp * 0.7 + s.ph) * 4
+    const x = s.x * w + dx
+    const y = s.y * h + dy
+    const size = s.s * base
+    ctx.strokeStyle = s.gold ? 'rgba(212, 175, 55, ' + (s.a + 0.12) + ')' : 'rgba(255, 255, 255, ' + s.a + ')'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    if (s.kind === 'line' || s.kind === 'diag') {
+      const len = size * 2
+      const ang = s.kind === 'diag' ? Math.PI / 4 : s.rot
+      ctx.moveTo(x - Math.cos(ang) * len / 2, y - Math.sin(ang) * len / 2)
+      ctx.lineTo(x + Math.cos(ang) * len / 2, y + Math.sin(ang) * len / 2)
+    } else if (s.kind === 'rect') {
+      ctx.rect(x - size / 2, y - size / 2, size, size * 0.7)
+    } else if (s.kind === 'circle') {
+      ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+    } else {
+      ctx.arc(x, y, size / 2, s.rot, s.rot + Math.PI * 1.2)
+    }
+    ctx.stroke()
+  }
+}
+function bgLoop(t) {
+  if (screen.value !== 'play') { bgRaf = 0; return }
+  drawBg(t)
+  bgRaf = requestAnimationFrame(bgLoop)
+}
+function startBgLoop() {
+  if (bgRaf) return
+  bgRaf = requestAnimationFrame(bgLoop)
+}
+function stopBgLoop() {
+  if (bgRaf) { cancelAnimationFrame(bgRaf); bgRaf = 0 }
 }
 
 // ---- 练习机器人 ----
@@ -537,6 +651,7 @@ function startBots() {
     miss: 0
   }))
   botTimer = setInterval(() => {
+    if (paused.value) return
     for (const b of bots.value) {
       b.score += Math.round((300 + Math.random() * 250) * b.skill * (0.8 + Math.random() * 0.4))
       b.maxCombo = Math.max(b.maxCombo, Math.floor(Math.random() * 60 * b.skill))
@@ -568,6 +683,8 @@ function clearTimers() {
   if (resultsTimer) { clearInterval(resultsTimer); resultsTimer = null }
   if (botTimer) { clearInterval(botTimer); botTimer = null }
   if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
+  stopBgLoop()
+  paused.value = false
 }
 async function refreshRoom() {
   if (!roomCode.value) return
@@ -783,12 +900,16 @@ function onKey(e) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKey)
+  window.addEventListener('pointerup', onAnyPointerUp)
+  window.addEventListener('pointercancel', onAnyPointerUp)
   if (userStore.refreshUserInfo) userStore.refreshUserInfo()
   const code = (route.query.code || '').toString().trim().toUpperCase()
   if (code) doJoin(code)
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('pointerup', onAnyPointerUp)
+  window.removeEventListener('pointercancel', onAnyPointerUp)
   clearTimers()
   if (audioCtx) {
     try { audioCtx.close() } catch (e) { /* 忽略 */ }
@@ -953,106 +1074,95 @@ onUnmounted(() => {
   display: block;
   margin: 8px auto 0;
 }
-.top-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 8px;
-  padding-right: 48px;
-  box-sizing: border-box;
+/* ---- 钢琴块 2 式：全屏横屏舞台 ---- */
+.play {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: #171210;
 }
-.score-box,
-.combo-box {
-  text-align: left;
-  flex-shrink: 0;
-}
-.score-label,
-.combo-label {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-.score-num {
-  font-size: 26px;
-  font-weight: bold;
-  line-height: 1.1;
-}
-.combo-num {
-  font-size: 26px;
-  font-weight: bold;
-  line-height: 1.1;
-  color: var(--el-color-primary);
-}
-.combo-box.hot .combo-num {
-  color: #f56c6c;
-}
-.song-chip {
-  flex: 1;
-  min-width: 0;
-  text-align: center;
-  font-size: 14px;
-  font-weight: bold;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.mute-btn {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.progress-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--el-fill-color);
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #79bbff, #409eff);
-  transition: width 0.2s linear;
-}
-.live-list {
-  margin-bottom: 8px;
-}
-.live-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  padding: 3px 2px;
-}
-.live-row.me {
-  font-weight: bold;
-}
-.live-name {
-  flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.live-score {
-  font-weight: bold;
-}
-.finished-tag {
-  font-size: 12px;
-  color: #67c23a;
-}
-.stage {
+.play-stage {
   position: relative;
-  border-radius: 12px;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  background: linear-gradient(180deg, #14142b 0%, #1e2a4a 60%, #24365e 100%);
-  display: flex;
-  flex-direction: column;
+}
+.bg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hud-combo {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 46px;
+  font-weight: 900;
+  color: #ff3b30;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+  z-index: 6;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.hud-score {
+  position: absolute;
+  top: 14px;
+  right: 60px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  letter-spacing: 2px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  z-index: 6;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.pause-btn {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 6;
+}
+.rotate-hint {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 7;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lanes-wrap {
+  position: absolute;
+  top: 72px;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(430px, 92%);
+  background: linear-gradient(180deg, rgba(139, 146, 255, 0.10), rgba(139, 146, 255, 0.18));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  overflow: hidden;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-}
-.lanes-wrap {
-  position: relative;
-  height: 340px;
-  flex: none;
-  touch-action: none;
 }
 .lanes {
   position: absolute;
@@ -1062,64 +1172,69 @@ onUnmounted(() => {
 .lane {
   flex: 1;
   position: relative;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
 }
 .lane:first-child {
   border-left: none;
 }
-.lane-1 { background: rgba(255, 107, 107, 0.06); }
-.lane-2 { background: rgba(255, 169, 77, 0.06); }
-.lane-3 { background: rgba(255, 212, 59, 0.06); }
-.lane-4 { background: rgba(105, 219, 124, 0.06); }
-.lane-5 { background: rgba(56, 217, 169, 0.06); }
-.lane-6 { background: rgba(77, 171, 247, 0.06); }
-.lane-7 { background: rgba(151, 117, 250, 0.06); }
-.lane-8 { background: rgba(247, 131, 172, 0.06); }
-.note {
+.tile {
   position: absolute;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 84%;
-  height: 46px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  font-weight: bold;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  left: 0;
+  width: 100%;
+  transform: translateY(-50%);
+  background: #0a0a0a;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-top: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 }
-.judge-line {
+.tile.hold {
+  background: linear-gradient(180deg, #1e3a8a, #172554);
+  border: 2px solid #d4af37;
+}
+.tile.holding {
+  box-shadow: 0 0 14px rgba(77, 171, 247, 0.85);
+}
+.lane-flash {
   position: absolute;
   left: 0;
   right: 0;
-  top: 82%;
-  height: 3px;
-  background: #fff;
-  opacity: 0.9;
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+  bottom: 0;
+  height: 16%;
+  background: radial-gradient(ellipse at center, rgba(77, 171, 247, 0.55), rgba(77, 171, 247, 0));
+  animation: flashfade 0.18s ease-out forwards;
   pointer-events: none;
 }
-.judge-pop {
+@keyframes flashfade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.hit-zone {
   position: absolute;
-  left: 50%;
-  top: 30%;
-  transform: translate(-50%, -50%);
-  font-size: 30px;
-  font-weight: bold;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 12%;
+  background: rgba(255, 255, 255, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   pointer-events: none;
-  animation: popfade 0.45s ease forwards;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-.pop-perfect { color: #ffd43b; }
-.pop-great { color: #69db7c; }
-.pop-good { color: #4dabf7; }
-.pop-miss { color: #adb5bd; }
-@keyframes popfade {
-  0% { opacity: 1; transform: translate(-50%, -50%) scale(1.25); }
-  100% { opacity: 0; transform: translate(-50%, -70%) scale(1); }
+.float-num {
+  position: absolute;
+  bottom: 20%;
+  transform: translateX(-50%);
+  color: #4dabf7;
+  font-size: 22px;
+  font-weight: bold;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  animation: floatup 0.7s ease-out forwards;
+  z-index: 5;
+}
+@keyframes floatup {
+  0% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -46px); }
 }
 .countdown {
   position: absolute;
@@ -1135,96 +1250,77 @@ onUnmounted(() => {
 .countdown.small {
   font-size: 28px;
 }
-.keyboard {
-  position: relative;
-  display: flex;
-  height: 92px;
-  flex: none;
-  background: #111;
-  touch-action: none;
-}
-.keyboard.big {
-  height: 190px;
-}
-.black-keys {
+.pause-overlay {
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  z-index: 2;
-}
-.black-keys span {
-  position: absolute;
-  top: 0;
-  width: 7%;
-  height: 55%;
-  margin-left: -3.5%;
-  background: #222;
-  border-radius: 0 0 4px 4px;
-  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.5);
-}
-.white-key {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid #999;
-  border-top: 2px solid #333;
-  background: #fff;
-  color: #333;
-  cursor: pointer;
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  padding-bottom: 6px;
-  gap: 1px;
+  justify-content: center;
+  gap: 14px;
+  z-index: 8;
+}
+.pause-title {
+  color: #fff;
+  font-size: 26px;
+  font-weight: bold;
+}
+.bottom-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 14px;
+  color: #fff;
+  font-size: 14px;
+  z-index: 6;
+  pointer-events: none;
+}
+.song-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+.diff-label {
+  font-weight: bold;
+  color: #ffd43b;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  flex-shrink: 0;
+}
+.free-lanes {
+  display: flex;
+  gap: 6px;
+  height: 320px;
+  margin-bottom: 18px;
+}
+.free-lane {
+  flex: 1;
+  min-width: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1c1a26, #0d0d12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
-.white-key:first-child {
-  border-left: none;
-}
-.white-key:last-child {
-  border-right: none;
-}
-.white-key.active {
-  background: #ffe066;
-  transform: translateY(2px);
-}
-.keyboard.big .white-key.active {
-  background: #ffe066;
-}
-.key-name {
-  font-size: 16px;
-  font-weight: bold;
-  line-height: 1;
-}
-.keyboard.big .key-name {
-  font-size: 22px;
-}
-.key-letter {
-  font-size: 11px;
-  color: #888;
-  line-height: 1.2;
-}
-.key-hint {
-  font-size: 10px;
-  color: #aaa;
-  line-height: 1.2;
+.free-lane.active {
+  background: #4dabf7;
 }
 .free-hint {
   text-align: center;
   font-size: 14px;
   color: var(--el-text-color-secondary);
   margin-bottom: 16px;
-}
-.free-stage {
-  margin-bottom: 18px;
-}
-.pad-hint {
-  text-align: center;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 8px;
 }
 .results-title {
   text-align: center;
