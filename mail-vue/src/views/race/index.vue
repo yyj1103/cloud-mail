@@ -248,12 +248,12 @@ function buildCourse(seedStr) {
       }
     }
     // 间距按刚放下的这段障碍的类型留（它决定了玩家离开它时所处的状态）：
-    // 跳地刺 / 坑要 0.71 秒才落地（最高速约 15.7 米），下一段至少 16 米，
+    // 跳地刺 / 坑要 0.71 秒才落地（最高速约 15.7 米），下一段至少 28 米，
     // 不然人还在半空就撞上只能下滑的悬空板；悬空板下滑要 0.55 秒，
-    // 下一段至少 13 米；全局最少 12 米
-    let gap = 12 + rand() * 4
-    if (type === 'spike' || type === 'pit') gap = Math.max(gap, 16 + rand() * 4)
-    else if (type === 'barrier') gap = Math.max(gap, 13 + rand() * 3)
+    // 下一段至少 24 米；全局最少 22 米 —— 陷阱别放太密，留口氣
+    let gap = 22 + rand() * 8
+    if (type === 'spike' || type === 'pit') gap = Math.max(gap, 28 + rand() * 6)
+    else if (type === 'barrier') gap = Math.max(gap, 24 + rand() * 4)
     d += gap
   }
   return { obstacles, coins }
