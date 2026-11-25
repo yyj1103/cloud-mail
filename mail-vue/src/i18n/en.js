@@ -27,6 +27,7 @@ const en = {
     dmRemarkSaved: 'Remark saved',
     dmRemarkTooLong: 'Remark can be at most 20 characters',
     cmfly: 'Cool Run Battle',
+    steelDawn: 'Steel Dawn',
     raceCreateRoom: 'Create room',
     raceJoinRoom: 'Join room',
     racePractice: 'Practice solo',
