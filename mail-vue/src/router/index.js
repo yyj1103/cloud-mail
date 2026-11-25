@@ -94,6 +94,18 @@ const routes = [
                 }
             },
             {
+                // 钢铁黎明：单人即时战略（打 AI），游戏本体在 public/games/steel-dawn/index.html
+                path: '/ra',
+                name: 'ra',
+                component: () => import('@/views/ra/index.vue'),
+                meta: {
+                    title: 'steelDawn',
+                    name: 'ra',
+                    menu: true,
+                    fullscreen: true
+                }
+            },
+            {
                 // 老的炫舞邀请链接（/dance?code=）跳到钢琴，房间码带上
                 path: '/dance',
                 redirect: to => ({ name: 'piano', query: to.query })
