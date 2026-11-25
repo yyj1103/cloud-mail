@@ -21,6 +21,10 @@
             <Icon icon="mdi:music" width="16" height="16" />
             <span>{{ $t('piano') }}</span>
           </el-dropdown-item>
+          <el-dropdown-item command="ra">
+            <Icon icon="mdi:sword" width="16" height="16" />
+            <span>{{ $t('steelDawn') }}</span>
+          </el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>
@@ -103,6 +107,8 @@ function handleFabCommand(cmd) {
     goDm()
   } else if (cmd === 'piano') {
     router.push({ name: 'piano' })
+  } else if (cmd === 'ra') {
+    router.push({ name: 'ra' })
   }
 }
 </script>
