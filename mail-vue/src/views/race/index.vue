@@ -45,13 +45,15 @@
     </div>
 
     <!-- 比赛：新年夜景坡道（全屏）+ 计时胶囊 + 进度条 + 右侧加速圆钮 -->
-    <div v-else-if="screen === 'race'" class="race-track">
-      <canvas ref="canvasRef" class="race-canvas" @pointerdown="onBoost" />
-      <button class="hud-exit" type="button" @click="exitGame" aria-label="close">✕</button>
-      <div class="hud-timer">{{ fmtElapsed }}<span class="hud-score">{{ $t('raceScore') }} {{ me.score }}</span></div>
-      <button class="hud-mute" type="button" @click="toggleMute" :aria-label="muted ? 'unmute' : 'mute'">{{ muted ? '🔇' : '🔊' }}</button>
+    <!-- 点按整个赛场都能加速（画布、圆钮、进度条都算）；退出/静音钮单独停掉冒泡 -->
+    <div v-else-if="screen === 'race'" class="race-track" @pointerdown="onBoost">
+      <canvas ref="canvasRef" class="race-canvas" />
+      <button class="hud-exit" type="button" @pointerdown.stop @click="exitGame" aria-label="close">✕</button>
+      <div class="hud-timer">{{ fmtElapsed }}<span class="hud-score">{{ $t('raceScore') }} {{ me.score }} · {{ meSpeed }} m/s</span></div>
+      <button class="hud-mute" type="button" @pointerdown.stop @click="toggleMute" :aria-label="muted ? 'unmute' : 'mute'">{{ muted ? '🔇' : '🔊' }}</button>
+      <div v-if="showRotateHint" class="rotate-hint" @pointerdown.stop @click="showRotateHint = false">横过来玩更爽</div>
       <button class="boost-circle" type="button" :disabled="countdown > 0 || me.finished"
-              @pointerdown.prevent="onBoost" aria-label="boost" />
+              aria-label="boost" />
       <div class="race-progress">
         <div class="progress-track">
           <div class="progress-fill" :style="{ width: pct(me.distance) + '%' }" />
@@ -102,12 +104,12 @@ const TRACK = 1000
 const RED_PACKETS = [80, 150, 230, 310, 380, 470, 540, 620, 700, 790, 860, 930]
 const INGOTS = [60, 180, 260, 340, 420, 500, 580, 680, 760, 840, 920, 980]
 const BASE_SPEED = 8       // 不点也会慢慢往下滑
-const TAP_ADD = 2.2        // 每点一下加的速度（下坡时按坡度放大）
+const TAP_ADD = 3.2        // 每点一下加的速度（下坡时按坡度放大，点一下要感觉得到）
 const MAX_SPEED = 36
 const MIN_SPEED = 2        // 速度下限：上坡再陡也不会停死
 const DECAY = 0.55         // 速度向下滑速度回落的快慢
-const SLOPE_GRAVITY = 4    // 坡度重力：下坡加速、上坡减速的强度
-const BOOST_SLOPE_FACTOR = 1.2 // 点按在下坡时额外放大多少
+const SLOPE_GRAVITY = 1.6  // 坡度重力：下坡加速、上坡减速的强度（坡更陡了，系数相应调小）
+const BOOST_SLOPE_FACTOR = 0.8 // 点按在下坡时额外放大多少（坡度因子封顶 1.5）
 const PACKET_BOOST = 3
 const PACKET_SCORE = 100
 const INGOT_SCORE = 50
@@ -132,6 +134,9 @@ const results = ref([])
 const practiceMode = ref(false)
 const muted = ref(false)
 const elapsedSec = ref(0)
+const showRotateHint = ref(false) // 竖屏时提示横过来玩，点一下消失
+// 顶上计时胶囊里同时显示当前速度，点按有没有用一眼就看出来
+const meSpeed = computed(() => Math.round(me.value.speed || 0))
 
 const myId = computed(() => userStore.user?.userId || 0)
 const myName = computed(() => userStore.user?.name || (userStore.user?.email || '').split('@')[0] || '我')
@@ -189,6 +194,7 @@ let progressTimer = null
 let countdownTimer = null
 let resizeObs = null
 let lastTick = 0
+let lastBoostAt = 0 // 上一次点按加速的时间（performance.now），画“+加速”浮字和加速特效用
 
 function colorOf(userId) {
   return COLORS[Math.abs(Number(userId) || 0) % COLORS.length]
@@ -471,10 +477,12 @@ function onBoost() {
   if (screen.value !== 'race' || countdown.value > 0) return
   const m = runners.value.find(r => r.userId === myId.value)
   if (!m || m.finished) return
-  // 下坡时点按更有效：坡越陡（slopeK 越大）这一按加得越多，上坡就是普通一按
+  // 下坡时点按更有效：坡越陡（slopeK 越大）这一按加得越多，上坡就是普通一按；
+  // 坡度因子封顶 1.5，免得最陡的下坡一按加太多
   const g = slopeK(m.distance)
-  const boost = TAP_ADD * (1 + BOOST_SLOPE_FACTOR * Math.max(0, g))
+  const boost = TAP_ADD * (1 + BOOST_SLOPE_FACTOR * Math.min(1.5, Math.max(0, g)))
   m.speed = Math.min(MAX_SPEED, m.speed + boost)
+  lastBoostAt = performance.now() // 画加速特效用
   const now = performance.now()
   if (now - lastTick > 90) {
     lastTick = now
@@ -497,11 +505,11 @@ function stepRunner(r, dt, now) {
     if (countdown.value > 0) { r.speed = 0; return }
     r.speed += (BASE_SPEED - r.speed) * DECAY * dt
   } else {
-    // 机器人：目标速度随机游走（跟新版速度走，练手才有得比）
+    // 机器人：目标速度随机游走（跟新版速度走，练手才有得比；比上一版慢一点，别把人甩太远）
     r.botTimer -= dt
     if (r.botTimer <= 0) {
       r.botTimer = 0.4 + Math.random() * 0.6
-      r.botTarget = 24 + Math.random() * 6
+      r.botTarget = 21 + Math.random() * 5
     }
     r.speed += (r.botTarget - r.speed) * 1.2 * dt
   }
@@ -577,13 +585,13 @@ function stopAllTimers() {
 }
 
 // —— 画布：新年夜景 + 橙色波浪坡道（按截图画） ——
-// 坡道形状：缓下坡 + 两段起伏，和原版一样，所有人跑同一条坡
+// 坡道形状：起伏要大，像原版那样一眼就是连绵的坡（振幅比上一版翻倍还多）
 function slopeY(d) {
-  return 150 + d * 0.06 + 42 * Math.sin(d * 0.02) + 14 * Math.sin(d * 0.053)
+  return 150 + d * 0.10 + 85 * Math.sin(d * 0.02) + 30 * Math.sin(d * 0.053)
 }
-// 坡道斜率（屏上角度用）
+// 坡道斜率（屏上角度 + 物理都用它；是 slopeY 的导数）
 function slopeK(d) {
-  return 0.06 + 42 * 0.02 * Math.cos(d * 0.02) + 14 * 0.053 * Math.cos(d * 0.053)
+  return 0.10 + 85 * 0.02 * Math.cos(d * 0.02) + 30 * 0.053 * Math.cos(d * 0.053)
 }
 // 确定性伪随机：同一位置永远同一种装饰，所有人看到的夜景一样
 function hash01(n) {
@@ -602,6 +610,8 @@ function startLoop() {
     canvas.width = Math.floor(w * dpr)
     canvas.height = Math.floor(h * dpr)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    // 竖屏玩提示横过来（原版是横屏全景）；点一下提示就消失，横屏时不显示
+    showRotateHint.value = h > w
   }
   resize()
   if (resizeObs) resizeObs.disconnect()
@@ -624,13 +634,20 @@ function startLoop() {
 function draw(ctx, canvas, timeSec) {
   const W = canvas.clientWidth || 320
   const H = canvas.clientHeight || 320
-  const leader = Math.max(0, ...runners.value.map(r => r.distance))
-  const leaderSpeed = Math.max(0, ...runners.value.map(r => r.speed || 0))
-  const camX = Math.max(0, leader - 45)
+  const nowMs = timeSec * 1000
+  const meR = runners.value.find(r => r.userId === myId.value)
+  // 镜头跟“我”走（之前跟最前面的人，人一落后自己就出画了，点按看着像没用）；
+  // 我固定在屏幕左起约 15% 处，和原版视频一样
+  const camRef = meR ? meR.distance : Math.max(0, ...runners.value.map(r => r.distance))
+  const mySpeed = meR ? (meR.speed || 0) : 0
+  const camX = Math.max(0, camRef - 22)
   const pxPerM = W / 150
-  const camY = slopeY(Math.max(0, leader)) - H * 0.55
+  // 竖屏时把坡的起伏在屏上放大，不然高屏上坡看起来是平的；横屏不放大
+  const vScale = Math.max(1, Math.min(2.2, H / 800))
   const toX = d => (d - camX) * pxPerM
-  const toY = d => slopeY(d) - camY
+  const toY = d => H * 0.55 + (slopeY(d) - slopeY(camRef)) * vScale
+  // 刚点过加速 260ms 内：画“+加速”浮字 + 更密的速度线，小人也胀大一点
+  const boosting = nowMs - lastBoostAt < 260
 
   // —— 天空：粉 → 暖橙渐变 ——
   const sky = ctx.createLinearGradient(0, 0, 0, H)
@@ -671,29 +688,55 @@ function draw(ctx, canvas, timeSec) {
     ctx.fill()
   }
 
-  // —— 烟花（固定几个位置，轮流绽放） ——
+  // —— 烟花（原版左上方那个大烟花：要大、要密、要常有） ——
   const bursts = [
+    { d: 60, y: 0.15, c: ['#ffd76a', '#ff5a8a', '#7ec8ff'] },
     { d: 140, y: 0.16, c: ['#ffd76a', '#ff5a8a', '#7ec8ff'] },
+    { d: 300, y: 0.13, c: ['#fff3b0', '#ff9a3d', '#c084fc'] },
     { d: 430, y: 0.2, c: ['#fff3b0', '#ff9a3d', '#c084fc'] },
+    { d: 620, y: 0.14, c: ['#ffd76a', '#7ee8a2', '#ff8a80'] },
     { d: 720, y: 0.14, c: ['#ffd76a', '#7ee8a2', '#ff8a80'] },
+    { d: 880, y: 0.17, c: ['#fff3b0', '#ff5a8a', '#7ec8ff'] },
     { d: 950, y: 0.18, c: ['#fff3b0', '#ff5a8a', '#7ec8ff'] }
   ]
+  const fwR = Math.min(W, H) * 0.22
   for (const b of bursts) {
     const bx = toX(b.d)
-    if (bx < -80 || bx > W + 80) continue
+    if (bx < -fwR - 40 || bx > W + fwR + 40) continue
     const by = H * b.y
-    const ph = (timeSec * 0.5 + b.d * 0.01) % 1
-    const R = 14 + ph * 46
+    const ph = (timeSec * 0.45 + b.d * 0.013) % 1
+    const R = 12 + ph * fwR
     const alpha = Math.max(0, 1 - ph)
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2 + b.d
+    // 上升的引线（刚起爆时）
+    if (ph < 0.25) {
+      ctx.strokeStyle = `rgba(255, 215, 106, ${0.8 * (1 - ph * 4)})`
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(bx - 14, by + 70)
+      ctx.lineTo(bx, by)
+      ctx.stroke()
+    }
+    // 放射状长 streak + 彩点
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + b.d
+      ctx.strokeStyle = b.c[i % b.c.length]
+      ctx.globalAlpha = alpha * 0.85
+      ctx.lineWidth = 1.8
+      ctx.beginPath()
+      ctx.moveTo(bx + Math.cos(a) * R * 0.35, by + Math.sin(a) * R * 0.32)
+      ctx.lineTo(bx + Math.cos(a) * R * 1.05, by + Math.sin(a) * R * 0.95)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 + b.d
       const rr = R * (0.55 + 0.45 * hash01(i + b.d))
       const px = bx + Math.cos(a) * rr
       const py = by + Math.sin(a) * rr * 0.9
       ctx.fillStyle = b.c[i % b.c.length]
       ctx.globalAlpha = alpha
       ctx.beginPath()
-      ctx.arc(px, py, 2.2, 0, Math.PI * 2)
+      ctx.arc(px, py, 2.4, 0, Math.PI * 2)
       ctx.fill()
       ctx.globalAlpha = 1
     }
@@ -701,7 +744,7 @@ function draw(ctx, canvas, timeSec) {
     ctx.fillStyle = '#ffffff'
     ctx.globalAlpha = alpha
     ctx.beginPath()
-    ctx.arc(bx, by, 4, 0, Math.PI * 2)
+    ctx.arc(bx, by, 5, 0, Math.PI * 2)
     ctx.fill()
     ctx.globalAlpha = 1
   }
@@ -716,6 +759,30 @@ function draw(ctx, canvas, timeSec) {
     ctx.fill()
     ctx.fillStyle = 'rgba(255, 220, 130, 0.95)'
     ctx.fillRect(lx - 3, ly - 4, 6, 8)
+  }
+
+  // —— 更远处的屋顶带（视差 0.3，又暗又小，垫在小镇后面显层次） ——
+  {
+    const mod = (a, n) => ((a % n) + n) % n
+    ctx.fillStyle = 'rgba(91, 58, 82, 0.5)'
+    for (let i = 0; i < 9; i++) {
+      const bx = mod(i * 173 - camX * pxPerM * 0.3, W + 220) - 110
+      const by = H * 0.44
+      const bw = 90 + hash01(i * 7) * 60
+      const bh = 24 + hash01(i * 3) * 14
+      ctx.beginPath()
+      ctx.moveTo(bx - bw / 2, by)
+      ctx.quadraticCurveTo(bx, by - bh, bx + bw / 2, by)
+      ctx.lineTo(bx + bw / 2 - 6, by + 12)
+      ctx.lineTo(bx - bw / 2 + 6, by + 12)
+      ctx.closePath()
+      ctx.fill()
+      // 小窗亮光
+      ctx.fillStyle = 'rgba(255, 200, 90, 0.55)'
+      ctx.fillRect(bx - 12, by - 6, 6, 7)
+      ctx.fillRect(bx + 6, by - 6, 6, 7)
+      ctx.fillStyle = 'rgba(91, 58, 82, 0.5)'
+    }
   }
 
   // —— 远处年味小镇剪影（跟坡面走，视差 0.5）：翘檐屋顶 + 红灯笼 + 一串炮竹 ——
@@ -760,6 +827,37 @@ function draw(ctx, canvas, timeSec) {
       ctx.stroke()
     }
   }
+  // 灰蓝色蛋形戴眼镜小怪物，坐在 520 米处的屋顶上（原版截图里那只）
+  {
+    const ex = toX(520)
+    if (ex > -50 && ex < W + 50) {
+      const ey = horizon(520) - 4
+      ctx.fillStyle = '#8fa3b8'
+      ctx.beginPath()
+      ctx.ellipse(ex, ey - 16, 15, 19, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#aebfce'
+      ctx.beginPath()
+      ctx.ellipse(ex - 4, ey - 20, 6, 8, -0.3, 0, Math.PI * 2)
+      ctx.fill()
+      // 圆眼镜
+      ctx.strokeStyle = '#5b3a52'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(ex - 6, ey - 18, 4.5, 0, Math.PI * 2)
+      ctx.arc(ex + 6, ey - 18, 4.5, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(ex - 1.5, ey - 18)
+      ctx.lineTo(ex + 1.5, ey - 18)
+      ctx.stroke()
+      ctx.fillStyle = '#333'
+      ctx.beginPath()
+      ctx.arc(ex - 6, ey - 18, 1.5, 0, Math.PI * 2)
+      ctx.arc(ex + 6, ey - 18, 1.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
   // 一串炮竹挂在屋檐下（固定在 300 米处）
   {
     const px = toX(300)
@@ -789,15 +887,15 @@ function draw(ctx, canvas, timeSec) {
   gnd.addColorStop(1, '#e8540f')
   ctx.fillStyle = gnd
   ctx.fill()
-  // 坡面上的深橙色斑点
+  // 坡面上的深橙色斑点（竖屏时跟着放大，不然大片空白）
   for (let d = Math.floor(camX / 7) * 7; d <= camX + 160; d += 7) {
     if (hash01(d * 1.7) < 0.45) continue
     const x = toX(d)
-    const y = toY(d) + 16 + hash01(d * 2.3) * 46
+    const y = toY(d) + 16 + hash01(d * 2.3) * 46 * vScale
     if (y > H + 6) continue
     ctx.fillStyle = 'rgba(200, 70, 0, 0.28)'
     ctx.beginPath()
-    ctx.ellipse(x, y, 4 + hash01(d) * 5, 3 + hash01(d + 9) * 3, 0, 0, Math.PI * 2)
+    ctx.ellipse(x, y, (4 + hash01(d) * 5) * vScale, (3 + hash01(d + 9) * 3) * vScale, 0, 0, Math.PI * 2)
     ctx.fill()
   }
   // 坡顶金边（截图里那道亮边）
@@ -813,6 +911,17 @@ function draw(ctx, canvas, timeSec) {
   ctx.strokeStyle = 'rgba(255, 243, 196, 0.9)'
   ctx.lineWidth = 1.6
   ctx.stroke()
+  // 坡面等高线：两道贴着坡形的暗纹，坡面不再是一大片平色
+  ctx.strokeStyle = 'rgba(200, 70, 0, 0.16)'
+  ctx.lineWidth = 3
+  for (const off of [46, 100]) {
+    ctx.beginPath()
+    for (let d = camX - 10; d <= camX + 160; d += 4) {
+      const x = toX(d), y = toY(d) + off * vScale
+      if (d === camX - 10) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+  }
 
   // —— 终点：红底金边拱门 ——
   if (toX(TRACK) >= -60 && toX(TRACK) <= W + 60) {
@@ -868,11 +977,12 @@ function draw(ctx, canvas, timeSec) {
     ctx.fill()
   }
 
-  // —— 速度线（跑得快时） ——
-  if (leaderSpeed > 15) {
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'
+  // —— 速度线（我跑得快时；刚点加速的那一下更密更亮） ——
+  if (mySpeed > 15 || boosting) {
+    ctx.strokeStyle = boosting ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.35)'
     ctx.lineWidth = 2
-    for (let i = 0; i < 5; i++) {
+    const nLines = boosting ? 9 : 5
+    for (let i = 0; i < nLines; i++) {
       const sy = H * (0.15 + hash01(i * 11 + Math.floor(timeSec * 3)) * 0.4)
       const sx = W - ((timeSec * 420 + i * 137) % (W + 120)) + 60
       ctx.beginPath()
@@ -882,23 +992,30 @@ function draw(ctx, canvas, timeSec) {
     }
   }
 
-  // —— 滑板小人 ——
+  // —— 滑板小人（靠太近的错开画，不然名字糊成一团） ——
+  const drawnX = []
   for (const r of runners.value) {
     const x = toX(r.distance)
     if (x < -50 || x > W + 50) continue
+    let stack = 0
+    for (const px of drawnX) if (Math.abs(px - x) < 36) stack++
+    drawnX.push(x)
+    const yOff = stack * 30
     const y = toY(r.distance)
     const isMe = r.userId === myId.value
     const color = colorOf(r.userId)
     const bob = Math.sin(timeSec * (4 + r.speed)) * Math.min(2.5, r.speed * 0.12)
-    const ang = Math.atan(slopeK(r.distance) / pxPerM) * 0.7
+    const ang = Math.max(-0.5, Math.min(0.5, Math.atan(vScale * slopeK(r.distance) / pxPerM) * 0.6))
+    const pulse = (isMe && boosting) ? 1.08 : 1
     // 影子
     ctx.fillStyle = 'rgba(120, 30, 0, 0.25)'
     ctx.beginPath()
-    ctx.ellipse(x, y + 3, 14, 4, 0, 0, Math.PI * 2)
+    ctx.ellipse(x, y + 3 + yOff, 14, 4, 0, 0, Math.PI * 2)
     ctx.fill()
     ctx.save()
-    ctx.translate(x, y + bob * 0.4)
+    ctx.translate(x, y + bob * 0.4 + yOff)
     ctx.rotate(ang)
+    ctx.scale(pulse, pulse)
     // 滑板
     ctx.fillStyle = '#7c5cff'
     roundRect(ctx, -17, -4, 34, 6, 3)
@@ -953,13 +1070,23 @@ function draw(ctx, canvas, timeSec) {
     ctx.font = 'bold 12px sans-serif'
     ctx.textAlign = 'center'
     ctx.fillStyle = isMe ? '#c0392b' : '#333'
-    ctx.fillText(isMe ? `${r.name} (我)` : r.name, x, y - 56 + bob * 0.4)
+    ctx.fillText(isMe ? `${r.name} (我)` : r.name, x, y - 56 + bob * 0.4 + yOff)
     if (isMe) {
       ctx.strokeStyle = '#ffd76a'
       ctx.lineWidth = 2.5
       ctx.beginPath()
-      ctx.arc(x, y - 22, 24, 0, Math.PI * 2)
+      ctx.arc(x, y - 22 + yOff, 24, 0, Math.PI * 2)
       ctx.stroke()
+    }
+    // 刚点加速：头顶飘一个“+加速”，点按立刻看得见
+    if (isMe && boosting) {
+      const a = Math.max(0, 1 - (nowMs - lastBoostAt) / 260)
+      ctx.globalAlpha = a
+      ctx.font = 'bold 16px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#fff'
+      ctx.fillText('+加速', x, y - 80 + bob * 0.4 + yOff)
+      ctx.globalAlpha = 1
     }
   }
 }
@@ -1099,6 +1226,26 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* 竖屏提示：原版是横屏全景，竖着玩先提示横过来，点一下消失 */
+.rotate-hint {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 6px 16px;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .race-canvas {
   position: absolute;
