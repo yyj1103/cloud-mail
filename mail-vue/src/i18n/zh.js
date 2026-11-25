@@ -27,6 +27,7 @@ const zh = {
     dmRemarkSaved: '备注已保存',
     dmRemarkTooLong: '备注最多 20 个字',
     cmfly: '酷跑对战',
+    steelDawn: '钢铁黎明',
     raceCreateRoom: '创建房间',
     raceJoinRoom: '加入房间',
     racePractice: '单人练习',
