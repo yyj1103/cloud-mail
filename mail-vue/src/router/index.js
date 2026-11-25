@@ -83,15 +83,20 @@ const routes = [
                 }
             },
             {
-                path: '/dance',
-                name: 'dance',
-                component: () => import('@/views/dance/index.vue'),
+                path: '/piano',
+                name: 'piano',
+                component: () => import('@/views/piano/index.vue'),
                 meta: {
-                    title: 'dance',
-                    name: 'dance',
+                    title: 'piano',
+                    name: 'piano',
                     menu: true,
                     fullscreen: true
                 }
+            },
+            {
+                // 老的炫舞邀请链接（/dance?code=）跳到钢琴，房间码带上
+                path: '/dance',
+                redirect: to => ({ name: 'piano', query: to.query })
             },
         ]
 

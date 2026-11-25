@@ -36,10 +36,10 @@
           <span class="menu-name" style="margin-left: 16px">{{$t('dm')}}</span>
           <el-badge v-if="dmStore.unread > 0" :value="dmStore.unread" :max="99" class="dm-badge" />
         </el-menu-item>
-        <el-menu-item @click="router.push({name: 'dance'})" index="dance"
-                      :class="route.meta.name === 'dance' ? 'choose-item' : ''">
+        <el-menu-item @click="router.push({name: 'piano'})" index="piano"
+                      :class="route.meta.name === 'piano' ? 'choose-item' : ''">
           <Icon icon="mdi:music" width="20" height="20" />
-          <span class="menu-name" style="margin-left: 16px">{{$t('dance')}}</span>
+          <span class="menu-name" style="margin-left: 16px">{{$t('piano')}}</span>
         </el-menu-item>
         <el-menu-item @click="router.push({name: 'setting'})" index="setting"
                       :class="route.meta.name === 'setting' ? 'choose-item' : ''">

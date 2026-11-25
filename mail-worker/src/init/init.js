@@ -64,6 +64,7 @@ const dbInit = {
 					code TEXT PRIMARY KEY,
 					host_user_id INTEGER NOT NULL,
 					status TEXT NOT NULL DEFAULT 'waiting',
+					song TEXT NOT NULL DEFAULT 'twinkle',
 					created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 					started_at INTEGER
 				)`),

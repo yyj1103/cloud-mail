@@ -26,8 +26,9 @@
       </el-main>
     </el-container>
   </el-container>
-  <!-- 手机端底部导航 + 右下角 + 按钮（只在 ≤767px 显示，见 bottom-nav/index.vue） -->
-  <bottom-nav />
+  <!-- 手机端底部导航 + 右下角 + 按钮（只在 ≤767px 显示，见 bottom-nav/index.vue）；
+       全屏游戏里不显示（之前漏在 v-if 外面，游戏里底部导航和 + 号还露着） -->
+  <bottom-nav v-if="!isFullscreen" />
   <writer ref="writerRef" />
 </template>
 

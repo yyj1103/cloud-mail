@@ -7,9 +7,10 @@ import dayjs from 'dayjs';
 import { t } from '../i18n/i18n'
 import emailUtils from '../utils/email-utils';
 
-// 冰面炫舞：房主建房间拿 6 位邀请码，好友凭邀请码进房，同一张谱面同时跳，按分数排名。
-// 房间和选手存在 dance_room / dance_player 两张表里（见 init v3_13DB）。
-// 谱面由客户端按房间码当种子生成（同一房间谱面相同），服务端只同步分数。
+// 节奏对战房间（冰面炫舞 → 钢琴对战）：房主建房间拿 6 位邀请码，好友凭邀请码进房，
+// 同一首曲子同时弹/跳，按分数排名。房间和选手存在 dance_room / dance_player 两张表里
+// （见 init v3_13DB）。房间记一首曲子 song（twinkle/ode/tiger/jingle），进房的人从房间读
+// 曲子，服务端只同步分数。
 // 没跑过 init 也能用：每次用到之前先建表（已存在时什么都不做）。
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -21,6 +22,7 @@ const danceService = {
 				code TEXT PRIMARY KEY,
 				host_user_id INTEGER NOT NULL,
 				status TEXT NOT NULL DEFAULT 'waiting',
+				song TEXT NOT NULL DEFAULT 'twinkle',
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 				started_at INTEGER
 			)`),
@@ -39,6 +41,10 @@ const danceService = {
 				PRIMARY KEY (code, user_id)
 			)`)
 		]);
+		// 老房间表没有 song 列时补一列（列已存在会报错，直接忽略）
+		try {
+			await c.env.db.prepare(`ALTER TABLE dance_room ADD COLUMN song TEXT DEFAULT 'twinkle'`).run();
+		} catch (e) { /* 列已存在 */ }
 	},
 
 	newCode() {
@@ -51,7 +57,7 @@ const danceService = {
 
 	async getRoomRow(c, code) {
 		const row = await c.env.db.prepare(
-			`SELECT code, host_user_id, status, created_at, started_at FROM dance_room WHERE code = ?`
+			`SELECT code, host_user_id, status, song, created_at, started_at FROM dance_room WHERE code = ?`
 		).bind(code).first();
 		return row || null;
 	},
@@ -93,6 +99,7 @@ const danceService = {
 			code: room.code,
 			hostUserId: room.host_user_id,
 			status: room.status,
+			song: room.song || 'twinkle',
 			startedAt: room.started_at || null,
 			isHost: room.host_user_id === userId,
 			players: players.map(p => ({
@@ -122,6 +129,8 @@ const danceService = {
 			`DELETE FROM dance_player WHERE code NOT IN (SELECT code FROM dance_room)`
 		).run();
 		const name = (params.name || '').trim();
+		const songs = ['twinkle', 'ode', 'tiger', 'jingle'];
+		const song = songs.includes(params.song) ? params.song : 'twinkle';
 		let code = '';
 		for (let i = 0; i < 5; i++) {
 			code = this.newCode();
@@ -133,8 +142,8 @@ const danceService = {
 			throw new BizError(t('roomCreateFailed'));
 		}
 		await c.env.db.prepare(
-			`INSERT INTO dance_room (code, host_user_id, status, created_at) VALUES (?, ?, 'waiting', ?)`
-		).bind(code, userId, dayjs().format('YYYY-MM-DD HH:mm:ss')).run();
+			`INSERT INTO dance_room (code, host_user_id, status, song, created_at) VALUES (?, ?, 'waiting', ?, ?)`
+		).bind(code, userId, song, dayjs().format('YYYY-MM-DD HH:mm:ss')).run();
 		await c.env.db.prepare(
 			`INSERT INTO dance_player (code, user_id, name, score, max_combo, perfect, great, good, miss, finished, updated_at) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, ?)`
 		).bind(code, userId, name, Date.now()).run();

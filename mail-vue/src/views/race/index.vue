@@ -1,8 +1,8 @@
 <template>
   <div class="race-page">
+    <button class="exit-btn" type="button" @click="exitGame" aria-label="close">✕</button>
     <!-- 主页：建房 / 进房 / 单人练习 / 私信邀好友 -->
     <div v-if="screen === 'home'" class="race-home">
-      <button class="exit-btn" type="button" @click="exitGame" aria-label="close">✕</button>
       <div class="race-logo">🏃</div>
       <div class="race-title">{{ $t('cmfly') }}</div>
       <p class="race-howto">{{ $t('raceHowTo') }}</p>
@@ -120,7 +120,7 @@ const RAMP = 0.35         // 每存活 1 秒提速 0.35 m/s
 const HIT_SLOW = 0.55     // 撞一下速度掉到 55%
 const INV_MS = 1000       // 撞后无敌 1 秒（闪烁）
 const GRAVITY = 2300      // px/s^2
-const JUMP_V = 780        // 第一段跳
+const JUMP_V = 820        // 第一段跳（780 太矮，个别障碍跳得吃力，提到 820；滞空约 0.71 秒）
 const JUMP_V2 = 700       // 二段跳
 const RUNNER_H = 56       // 站立高度 px
 const SLIDE_H = 22        // 下滑高度 px
@@ -206,7 +206,7 @@ function makeRunner(userId, name, avatar, email) {
     distance: 0, speed: 0, score: 0, finished: false, survivalMs: null,
     lives: 3, coins: 0,
     // 只有我用物理字段；机器人用 nextObs / nextCoin 下标 + skill 模拟
-    y: 0, vy: 0, jumps: 0, sliding: false, slideUntil: 0, invUntil: 0,
+    y: 0, vy: 0, jumps: 0, sliding: false, slideUntil: 0, invUntil: 0, jumpBufUntil: 0,
     nextObs: 0, nextCoin: 0, skill: 0, botStagger: 0
   }
 }
@@ -247,7 +247,14 @@ function buildCourse(seedStr) {
         coins.push({ x: cx, y: cy, got: false })
       }
     }
-    d += 9 + rand() * 7 // 障碍间距 9–16 米，最高速下也跳得过来
+    // 间距按刚放下的这段障碍的类型留（它决定了玩家离开它时所处的状态）：
+    // 跳地刺 / 坑要 0.71 秒才落地（最高速约 15.7 米），下一段至少 16 米，
+    // 不然人还在半空就撞上只能下滑的悬空板；悬空板下滑要 0.55 秒，
+    // 下一段至少 13 米；全局最少 12 米
+    let gap = 12 + rand() * 4
+    if (type === 'spike' || type === 'pit') gap = Math.max(gap, 16 + rand() * 4)
+    else if (type === 'barrier') gap = Math.max(gap, 13 + rand() * 3)
+    d += gap
   }
   return { obstacles, coins }
 }
@@ -397,7 +404,9 @@ function backHome() {
   doLeave()
 }
 
-function exitGame() {
+async function exitGame() {
+  // 不在主页时先离房（在房间里就退掉房间，练习直接停），再退出游戏
+  if (screen.value !== 'home') await doLeave()
   if (window.history.length > 1) router.back()
   else router.push({ name: 'email' })
 }
@@ -513,6 +522,9 @@ function doJump() {
   if (m.jumps < 2) {
     m.vy = m.jumps === 0 ? JUMP_V : JUMP_V2
     m.jumps++
+  } else {
+    // 二段跳已用完：120ms 内落地就补跳（输入缓冲，手感更宽容）
+    m.jumpBufUntil = Date.now() + 120
   }
 }
 
@@ -559,7 +571,15 @@ function stepMe(r, dt, now) {
   if (r.y > 0 || r.vy !== 0) {
     r.vy -= GRAVITY * dt
     r.y += r.vy * dt
-    if (r.y <= 0) { r.y = 0; r.vy = 0; r.jumps = 0 }
+    if (r.y <= 0) {
+      r.y = 0; r.vy = 0; r.jumps = 0
+      // 输入缓冲：落地前 120ms 内按过跳，落地立刻起跳
+      if (now < r.jumpBufUntil) {
+        r.jumpBufUntil = 0
+        r.vy = JUMP_V
+        r.jumps = 1
+      }
+    }
   }
   r.distance += r.speed * dt
   r.score = Math.floor(r.distance) + r.coins * 10
@@ -578,8 +598,11 @@ function stepMe(r, dt, now) {
   const inv = now < r.invUntil
   for (const o of course.obstacles) {
     if (o.done) continue
-    if (o.x > r.distance + 1.2) break
-    if (o.x < r.distance - 1.2) { o.done = true; continue }
+    // 地刺的判定窗收窄到 ±0.9 米：跳跃升到 34px 需要约 0.93 米，
+    // 窗口太宽会让“看到刺再起跳”的正常操作在窗口边沿就撞上；坑和悬空板保持 ±1.2 米
+    const halfW = o.type === 'spike' ? 0.9 : 1.2
+    if (o.x > r.distance + halfW) break
+    if (o.x < r.distance - halfW) { o.done = true; continue }
     if (inv) continue
     if (hitObstacle(r, o)) {
       o.done = true
@@ -636,7 +659,7 @@ function finishRun(r) {
   if (r.finished) return
   r.finished = true
   r.speed = 0
-  r.y = 0; r.vy = 0; r.jumps = 0; r.sliding = false // 落回地面，别冻在半空
+  r.y = 0; r.vy = 0; r.jumps = 0; r.sliding = false; r.jumpBufUntil = 0 // 落回地面，别冻在半空
   r.survivalMs = Math.max(0, Date.now() - raceStartClient - 3000)
   if (!practiceMode.value) {
     // 按实际距离和完赛标记上报一次（无尽跑酷没有终点线，完赛只认 finished 标记）
@@ -705,6 +728,295 @@ function startLoop() {
   rafId = requestAnimationFrame(frame)
 }
 
+// —— 画布：4399 风格卡通跑酷场景 ——
+// 世界坐标用“米”：pxPerM = 画布宽 / 55 米。装饰物（云、树、花、石子）
+// 按世界位置用哈希排布，同一房间所有人看到的风景一致。
+// 特效（金币星光、落地尘土）只在绘制层维护，不碰游戏逻辑。
+function hashN(n) {
+  const s = Math.sin(n * 127.1 + 311.7) * 43758.5453
+  return s - Math.floor(s)
+}
+let fxSparkles = [] // {wx, y, born} 金币拾取星光（世界坐标）
+let fxDust = []     // {x, y, born, big} 落地 / 奔跑尘土
+let fxPrevMeY = 0
+let fxPrevCourse = null
+let fxSquashUntil = 0
+let fxLastDustAt = 0
+
+function drawBackground(ctx, W, H, myDist, pxPerM, groundY, timeSec, toX) {
+  // 天空：浅蓝 → 暖黄
+  const sky = ctx.createLinearGradient(0, 0, 0, H)
+  sky.addColorStop(0, '#5db8f0')
+  sky.addColorStop(0.55, '#a5dcf7')
+  sky.addColorStop(0.85, '#e8f7ff')
+  sky.addColorStop(1, '#fff3c4')
+  ctx.fillStyle = sky
+  ctx.fillRect(0, 0, W, H)
+  // 太阳：笑脸 + 慢慢转的光芒
+  const sunX = W - 60
+  const sunY = 54
+  ctx.save()
+  ctx.translate(sunX, sunY)
+  ctx.rotate(timeSec * 0.08)
+  ctx.strokeStyle = 'rgba(255, 214, 64, 0.9)'
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2
+    ctx.beginPath()
+    ctx.moveTo(Math.cos(a) * 32, Math.sin(a) * 32)
+    ctx.lineTo(Math.cos(a) * 42, Math.sin(a) * 42)
+    ctx.stroke()
+  }
+  ctx.restore()
+  ctx.fillStyle = '#ffd94d'
+  ctx.beginPath()
+  ctx.arc(sunX, sunY, 26, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#ff9f1c'
+  ctx.beginPath()
+  ctx.arc(sunX - 8, sunY - 4, 2.4, 0, Math.PI * 2)
+  ctx.arc(sunX + 8, sunY - 4, 2.4, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#ff9f1c'
+  ctx.lineWidth = 2.4
+  ctx.beginPath()
+  ctx.arc(sunX, sunY + 2, 10, Math.PI * 0.15, Math.PI * 0.85)
+  ctx.stroke()
+  // 热气球：慢慢飘过天空
+  const balX = ((timeSec * 9 + 240) % (W + 260)) - 130
+  const balY = 76 + Math.sin(timeSec * 0.5) * 8
+  ctx.fillStyle = '#ff6b6b'
+  ctx.beginPath()
+  ctx.ellipse(balX, balY, 20, 24, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#ffd93d'
+  ctx.beginPath()
+  ctx.ellipse(balX, balY, 8, 24, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#8a5a2b'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(balX - 10, balY + 20)
+  ctx.lineTo(balX - 6, balY + 32)
+  ctx.moveTo(balX + 10, balY + 20)
+  ctx.lineTo(balX + 6, balY + 32)
+  ctx.stroke()
+  ctx.fillStyle = '#a06a35'
+  ctx.fillRect(balX - 7, balY + 32, 14, 10)
+  // 云：视差 0.15，慢慢漂
+  const span = W + 280
+  const cloudOff = (myDist * pxPerM * 0.15 + timeSec * 5) % span
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
+  for (let i = 0; i < 4; i++) {
+    const cx = (((i * 360 - cloudOff) % span) + span) % span - 140
+    const cy = 44 + (i % 3) * 36
+    const s = 0.8 + hashN(i * 7) * 0.5
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, 44 * s, 15 * s, 0, 0, Math.PI * 2)
+    ctx.ellipse(cx + 28 * s, cy + 5 * s, 30 * s, 12 * s, 0, 0, Math.PI * 2)
+    ctx.ellipse(cx - 28 * s, cy + 6 * s, 26 * s, 10 * s, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  // 远山（视差 0.25）：淡蓝
+  ctx.fillStyle = '#a9c6e8'
+  ctx.beginPath()
+  ctx.moveTo(0, groundY)
+  for (let x = 0; x <= W; x += 14) {
+    const wx = x + myDist * pxPerM * 0.25
+    ctx.lineTo(x, groundY - 74 - 36 * Math.sin(wx * 0.008) - 16 * Math.sin(wx * 0.019 + 1.3))
+  }
+  ctx.lineTo(W, groundY)
+  ctx.closePath()
+  ctx.fill()
+  // 近山丘（视差 0.5）：青绿圆丘
+  ctx.fillStyle = '#8ed081'
+  ctx.beginPath()
+  ctx.moveTo(0, groundY)
+  for (let x = 0; x <= W; x += 14) {
+    const wx = x + myDist * pxPerM * 0.5
+    ctx.lineTo(x, groundY - 22 - 18 * Math.abs(Math.sin(wx * 0.011 + 2)))
+  }
+  ctx.lineTo(W, groundY)
+  ctx.closePath()
+  ctx.fill()
+  // 树 / 灌木 / 花：每 7 米一个位置，哈希决定种类
+  const slot = 7
+  const k0 = Math.floor((myDist - 30) / slot)
+  const k1 = Math.floor((myDist + 60) / slot)
+  for (let k = k0; k <= k1; k++) {
+    const x = toX(k * slot)
+    if (x < -70 || x > W + 70) continue
+    const h1 = hashN(k)
+    const h2 = hashN(k * 3 + 1)
+    if (h1 < 0.42) {
+      // 大树
+      const th = 46 + h2 * 22
+      ctx.fillStyle = '#8a5a2b'
+      ctx.fillRect(x - 3.5, groundY - 18, 7, 18)
+      ctx.fillStyle = '#43a047'
+      ctx.beginPath()
+      ctx.arc(x, groundY - th + 16, 17, 0, Math.PI * 2)
+      ctx.arc(x - 13, groundY - th + 26, 12, 0, Math.PI * 2)
+      ctx.arc(x + 13, groundY - th + 26, 12, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#66bb6a'
+      ctx.beginPath()
+      ctx.arc(x - 5, groundY - th + 12, 9, 0, Math.PI * 2)
+      ctx.fill()
+    } else if (h1 < 0.72) {
+      // 灌木
+      ctx.fillStyle = '#66bb6a'
+      ctx.beginPath()
+      ctx.arc(x - 8, groundY - 8, 11, 0, Math.PI * 2)
+      ctx.arc(x + 8, groundY - 8, 12, 0, Math.PI * 2)
+      ctx.arc(x, groundY - 14, 12, 0, Math.PI * 2)
+      ctx.fill()
+    } else {
+      // 小花
+      const petal = ['#ff8fb3', '#ffd93d', '#ffffff', '#c58bff'][Math.floor(h2 * 4)]
+      ctx.strokeStyle = '#43a047'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(x, groundY)
+      ctx.lineTo(x, groundY - 16)
+      ctx.stroke()
+      ctx.fillStyle = petal
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * Math.PI * 2
+        ctx.beginPath()
+        ctx.arc(x + Math.cos(a) * 4.5, groundY - 19 + Math.sin(a) * 4.5, 3.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = '#ff9f1c'
+      ctx.beginPath()
+      ctx.arc(x, groundY - 19, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+}
+
+function drawGround(ctx, W, H, myDist, pxPerM, groundY, toX) {
+  // 泥土路
+  const dirt = ctx.createLinearGradient(0, groundY, 0, H)
+  dirt.addColorStop(0, '#b5773d')
+  dirt.addColorStop(1, '#8a5a2b')
+  ctx.fillStyle = dirt
+  ctx.fillRect(0, groundY, W, H - groundY)
+  // 草皮顶边：绿色带波浪底边
+  ctx.fillStyle = '#58b368'
+  ctx.beginPath()
+  ctx.moveTo(0, groundY)
+  ctx.lineTo(W, groundY)
+  ctx.lineTo(W, groundY + 9)
+  for (let x = W; x >= 0; x -= 12) {
+    ctx.quadraticCurveTo(x - 6, groundY + 16, x - 12, groundY + 9)
+  }
+  ctx.closePath()
+  ctx.fill()
+  // 草皮上的亮草叶 + 泥土里的小石子（随地面滚动，每 3 米一个位置）
+  const gap = 3
+  const k0 = Math.floor((myDist - 30) / gap)
+  const k1 = Math.floor((myDist + 60) / gap)
+  ctx.strokeStyle = '#7ed081'
+  ctx.lineWidth = 2
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  for (let k = k0; k <= k1; k++) {
+    if (hashN(k * 5 + 1) < 0.45) continue
+    const x = toX(k * gap)
+    ctx.moveTo(x, groundY + 2)
+    ctx.lineTo(x - 2, groundY - 5)
+    ctx.moveTo(x + 3, groundY + 2)
+    ctx.lineTo(x + 5, groundY - 4)
+  }
+  ctx.stroke()
+  for (let k = k0; k <= k1; k++) {
+    const h = hashN(k * 11 + 4)
+    if (h < 0.55) continue
+    const x = toX(k * gap)
+    const y = groundY + 20 + hashN(k * 3) * Math.max(4, H - groundY - 28)
+    ctx.fillStyle = 'rgba(90, 55, 25, 0.5)'
+    ctx.beginPath()
+    ctx.ellipse(x, y, 4 + h * 3, 2.5 + h * 2, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+// 地刺：木底座 + 三根金属刺 + 黄色警示牌
+function drawSpikeAt(ctx, x, groundY) {
+  ctx.fillStyle = '#8a5a2b'
+  roundRect(ctx, x - 24, groundY - 7, 48, 8, 3)
+  ctx.fill()
+  ctx.fillStyle = '#6b4423'
+  ctx.fillRect(x - 24, groundY - 3, 48, 2)
+  for (let i = -1; i <= 1; i++) {
+    const bx = x + i * 14
+    const grad = ctx.createLinearGradient(bx - 8, 0, bx + 8, 0)
+    grad.addColorStop(0, '#9aa0a6')
+    grad.addColorStop(0.5, '#e8eaed')
+    grad.addColorStop(1, '#7a7f85')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.moveTo(bx - 8, groundY - 6)
+    ctx.lineTo(bx, groundY - SPIKE_H)
+    ctx.lineTo(bx + 8, groundY - 6)
+    ctx.closePath()
+    ctx.fill()
+  }
+  // 警示牌：黄色三角 + 感叹号
+  ctx.strokeStyle = '#8a5a2b'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(x - 34, groundY)
+  ctx.lineTo(x - 34, groundY - 26)
+  ctx.stroke()
+  ctx.fillStyle = '#ffd93d'
+  ctx.beginPath()
+  ctx.moveTo(x - 34, groundY - 44)
+  ctx.lineTo(x - 24, groundY - 26)
+  ctx.lineTo(x - 44, groundY - 26)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#e8a800'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.fillStyle = '#333333'
+  ctx.font = 'bold 13px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('!', x - 34, groundY - 32)
+}
+
+// 悬空板：吊绳 + 红白条纹板（下滑才能过）
+function drawBarrierAt(ctx, x, w, groundY) {
+  const top = groundY - BARRIER_BOTTOM - 26
+  ctx.strokeStyle = '#7a7f85'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(x - w / 2, 0)
+  ctx.lineTo(x - w / 2, top)
+  ctx.moveTo(x + w / 2, 0)
+  ctx.lineTo(x + w / 2, top)
+  ctx.stroke()
+  ctx.save()
+  roundRect(ctx, x - w / 2, top, w, 26, 5)
+  ctx.clip()
+  ctx.fillStyle = '#e23b3b'
+  ctx.fillRect(x - w / 2, top, w, 26)
+  ctx.fillStyle = '#ffffff'
+  for (let s = 0; s < w; s += 18) {
+    ctx.fillRect(x - w / 2 + s, top, 9, 26)
+  }
+  ctx.restore()
+  ctx.strokeStyle = '#a11f1f'
+  ctx.lineWidth = 2
+  roundRect(ctx, x - w / 2, top, w, 26, 5)
+  ctx.stroke()
+  ctx.fillStyle = '#ffd93d'
+  ctx.fillRect(x - w / 2 + 3, top + 21, w - 6, 3)
+}
+
 function draw(ctx, canvas, timeSec) {
   const W = canvas.clientWidth || 320
   const H = canvas.clientHeight || 320
@@ -715,94 +1027,69 @@ function draw(ctx, canvas, timeSec) {
   const groundY = H - 56
   const toX = d => runnerX + (d - myDist) * pxPerM
 
-  // 天空
-  const sky = ctx.createLinearGradient(0, 0, 0, H)
-  sky.addColorStop(0, '#7ec3ee')
-  sky.addColorStop(0.6, '#bfe6f7')
-  sky.addColorStop(1, '#e8f6ff')
-  ctx.fillStyle = sky
-  ctx.fillRect(0, 0, W, H)
-  // 太阳
-  ctx.fillStyle = '#ffd94d'
-  ctx.beginPath()
-  ctx.arc(W - 56, 52, 26, 0, Math.PI * 2)
-  ctx.fill()
-  // 云（视差 0.15）
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'
-  const span = W + 260
-  const cloudOff = (myDist * pxPerM * 0.15) % span
-  for (let i = 0; i < 3; i++) {
-    const cx = (((i * 340 - cloudOff) % span) + span) % span - 130
-    const cy = 46 + i * 34
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, 42, 14, 0, 0, Math.PI * 2)
-    ctx.ellipse(cx + 26, cy + 4, 30, 11, 0, 0, Math.PI * 2)
-    ctx.fill()
+  // 换赛道时清掉特效
+  if (fxPrevCourse !== course) {
+    fxPrevCourse = course
+    fxSparkles = []
+    fxDust = []
+    fxPrevMeY = 0
+    fxSquashUntil = 0
   }
-  // 远山（视差 0.35）
-  ctx.fillStyle = 'rgba(110, 170, 110, 0.5)'
-  ctx.beginPath()
-  ctx.moveTo(0, groundY)
-  for (let x = 0; x <= W; x += 16) {
-    const wx = x + myDist * pxPerM * 0.35
-    ctx.lineTo(x, groundY - 60 - 34 * Math.sin(wx * 0.008) - 14 * Math.sin(wx * 0.021))
+  // 落地检测：尘土 + 压扁
+  if (m && !m.finished) {
+    if (fxPrevMeY > 8 && m.y <= 0) {
+      fxSquashUntil = timeSec + 0.16
+      for (let i = 0; i < 4; i++) {
+        fxDust.push({ x: runnerX - 14 + i * 9 + (hashN(i + 3) - 0.5) * 6, y: groundY + 2, born: timeSec, big: true })
+      }
+    }
+    if (m.y <= 0 && m.speed > 10 && timeSec - fxLastDustAt > 0.22) {
+      fxLastDustAt = timeSec
+      fxDust.push({ x: runnerX - 12, y: groundY + 2, born: timeSec, big: false })
+    }
+    if (m.sliding && m.speed > 8 && timeSec - fxLastDustAt > 0.15) {
+      fxLastDustAt = timeSec
+      fxDust.push({ x: runnerX - 16, y: groundY + 2, born: timeSec, big: false })
+    }
+    fxPrevMeY = m.y
   }
-  ctx.lineTo(W, groundY)
-  ctx.closePath()
-  ctx.fill()
-  // 近山（视差 0.6）
-  ctx.fillStyle = 'rgba(90, 160, 90, 0.55)'
-  ctx.beginPath()
-  ctx.moveTo(0, groundY)
-  for (let x = 0; x <= W; x += 16) {
-    const wx = x + myDist * pxPerM * 0.6
-    ctx.lineTo(x, groundY - 18 - 16 * Math.sin(wx * 0.012 + 2))
-  }
-  ctx.lineTo(W, groundY)
-  ctx.closePath()
-  ctx.fill()
 
-  // 地面
-  ctx.fillStyle = '#8a5a2b'
-  ctx.fillRect(0, groundY, W, H - groundY)
-  ctx.fillStyle = '#a06a35'
-  ctx.fillRect(0, groundY, W, 6)
-  // 坑：地面上抠出来的洞
+  drawBackground(ctx, W, H, myDist, pxPerM, groundY, timeSec, toX)
+  drawGround(ctx, W, H, myDist, pxPerM, groundY, toX)
+
   if (course) {
+    // 坑：黑洞 + 碎裂边缘
     for (const o of course.obstacles) {
       if (o.type !== 'pit') continue
-      const x0 = toX(o.x - 1.2), x1 = toX(o.x + 1.2)
+      const x0 = toX(o.x - 1.2)
+      const x1 = toX(o.x + 1.2)
       if (x1 < -20 || x0 > W + 20) continue
-      ctx.fillStyle = '#241608'
-      ctx.fillRect(x0, groundY, x1 - x0, H - groundY)
-      ctx.fillStyle = '#3a2412'
-      ctx.fillRect(x0, groundY, x1 - x0, 5)
+      const w = x1 - x0
+      ctx.fillStyle = '#1d0f04'
+      ctx.fillRect(x0, groundY, w, H - groundY)
+      const pitGrad = ctx.createLinearGradient(0, groundY, 0, groundY + 26)
+      pitGrad.addColorStop(0, '#000000')
+      pitGrad.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = pitGrad
+      ctx.fillRect(x0, groundY, w, 26)
+      ctx.fillStyle = '#6b4423'
+      for (let i = 0; i < 4; i++) {
+        const ex = x0 + (i + 0.5) * (w / 4) + (hashN(o.x * 10 + i) - 0.5) * 8
+        ctx.beginPath()
+        ctx.moveTo(ex - 6, groundY)
+        ctx.lineTo(ex, groundY - 5 - hashN(i + o.x) * 4)
+        ctx.lineTo(ex + 6, groundY)
+        ctx.closePath()
+        ctx.fill()
+      }
     }
-  }
-  // 地面滚动虚线
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)'
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  const dashGap = 26
-  const off = (myDist * pxPerM) % dashGap
-  for (let x = -off; x < W; x += dashGap) {
-    ctx.moveTo(x, groundY + 22)
-    ctx.lineTo(x + 12, groundY + 22)
-  }
-  ctx.stroke()
-
-  // 每 100 米一个路标
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'
-  ctx.font = 'bold 12px sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'alphabetic'
-  const mark0 = Math.max(100, Math.floor((myDist - 20) / 100) * 100)
-  for (let d = mark0; d <= myDist + 60; d += 100) {
-    ctx.fillText(`${d}m`, toX(d), groundY - 8)
-  }
-
-  // 金币（旋转）
-  if (course) {
+    // 金币：先记下新拾取的（出星光），再画
+    for (const c of course.coins) {
+      if (c.got && !c._fx) {
+        c._fx = 1
+        fxSparkles.push({ wx: c.x, y: c.y, born: timeSec })
+      }
+    }
     for (const c of course.coins) {
       const x = toX(c.x)
       if (x < -20 || x > W + 20 || c.got) continue
@@ -811,6 +1098,10 @@ function draw(ctx, canvas, timeSec) {
       ctx.save()
       ctx.translate(x, y)
       ctx.scale(0.4 + 0.6 * spin, 1)
+      ctx.fillStyle = 'rgba(255, 207, 61, 0.35)'
+      ctx.beginPath()
+      ctx.arc(0, 0, 14, 0, Math.PI * 2)
+      ctx.fill()
       ctx.fillStyle = '#ffcf3d'
       ctx.beginPath()
       ctx.arc(0, 0, 10, 0, Math.PI * 2)
@@ -825,49 +1116,84 @@ function draw(ctx, canvas, timeSec) {
       ctx.fillText('★', 0, 1)
       ctx.restore()
     }
-  }
-
-  // 障碍
-  if (course) {
+    // 障碍：地刺 / 悬空板（坑画在地面里了）
     for (const o of course.obstacles) {
       const x = toX(o.x)
       if (x < -60 || x > W + 60) continue
-      if (o.type === 'spike') {
-        ctx.fillStyle = '#5b5b5b'
-        for (let i = -1; i <= 1; i++) {
-          const bx = x + i * 12
-          ctx.beginPath()
-          ctx.moveTo(bx - 8, groundY)
-          ctx.lineTo(bx, groundY - SPIKE_H)
-          ctx.lineTo(bx + 8, groundY)
-          ctx.closePath()
-          ctx.fill()
-        }
-      } else if (o.type === 'barrier') {
-        const w = 1.7 * pxPerM
-        const top = groundY - BARRIER_BOTTOM - 26
-        ctx.strokeStyle = '#8a8a8a'
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.moveTo(x - w / 2, 0)
-        ctx.lineTo(x - w / 2, top)
-        ctx.moveTo(x + w / 2, 0)
-        ctx.lineTo(x + w / 2, top)
-        ctx.stroke()
-        ctx.fillStyle = '#e23b3b'
-        ctx.fillRect(x - w / 2, top, w, 26)
-        ctx.fillStyle = '#fff'
-        for (let s = 0; s < w; s += 16) {
-          ctx.fillRect(x - w / 2 + s, top, 8, 26)
-        }
-      }
-      // 坑已经画在地面里了
+      if (o.type === 'spike') drawSpikeAt(ctx, x, groundY)
+      else if (o.type === 'barrier') drawBarrierAt(ctx, x, 1.7 * pxPerM, groundY)
     }
+  }
+
+  // 高速速度线
+  if (m && m.speed > 14 && !m.finished) {
+    ctx.save()
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    for (let i = 0; i < 5; i++) {
+      const bucket = Math.floor(timeSec * 9)
+      const y = 40 + hashN(i * 31 + bucket) * Math.max(20, groundY - 90)
+      const len = 50 + hashN(i * 17 + bucket) * 50
+      const x = W - ((timeSec * 700 + i * 211) % (W + 160)) + 40
+      ctx.globalAlpha = 0.35
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(x + len, y)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  // 金币星光
+  fxSparkles = fxSparkles.filter(s => timeSec - s.born < 0.45)
+  for (const s of fxSparkles) {
+    const age = timeSec - s.born
+    const a = 1 - age / 0.45
+    const x = toX(s.wx)
+    const y = groundY - s.y
+    ctx.save()
+    ctx.globalAlpha = a
+    ctx.strokeStyle = '#ffd93d'
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2
+      const r0 = 4 + age * 34
+      const r1 = 10 + age * 46
+      ctx.beginPath()
+      ctx.moveTo(x + Math.cos(ang) * r0, y + Math.sin(ang) * r0)
+      ctx.lineTo(x + Math.cos(ang) * r1, y + Math.sin(ang) * r1)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  // 尘土
+  fxDust = fxDust.filter(d => timeSec - d.born < 0.55)
+  for (const d of fxDust) {
+    const age = timeSec - d.born
+    const a = (1 - age / 0.55) * 0.45
+    const r = (d.big ? 7 : 5) + age * 22
+    ctx.fillStyle = `rgba(198, 178, 148, ${a})`
+    ctx.beginPath()
+    ctx.arc(d.x, d.y - age * 8, r, 0, Math.PI * 2)
+    ctx.fill()
   }
 
   // 所有选手（对手按服务器同步的位置画）
   for (const r of runners.value) {
     drawRunner(ctx, r, toX, groundY, timeSec, W)
+  }
+
+  // 每 100 米一个路标
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'
+  ctx.font = 'bold 12px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  const mark0 = Math.max(100, Math.floor((myDist - 20) / 100) * 100)
+  for (let d = mark0; d <= myDist + 60; d += 100) {
+    ctx.fillText(`${d}m`, toX(d), groundY - 8)
   }
 
   // 左上角当前距离
@@ -880,76 +1206,36 @@ function draw(ctx, canvas, timeSec) {
 
 function drawRunner(ctx, r, toX, groundY, timeSec, W) {
   const x = toX(r.distance)
-  if (x < -50 || x > W + 50) return
+  if (x < -60 || x > W + 60) return
   const isMe = r.userId === myId.value
   const color = colorOf(r.userId)
   const sliding = r.sliding && !r.finished
   const h = sliding ? SLIDE_H : RUNNER_H
   const feetY = groundY - (isMe ? r.y : 0)
   const inv = isMe && Date.now() < r.invUntil
+  // 影子：跳得越高越小越淡
+  const airH = isMe ? r.y : 0
+  const shScale = Math.max(0.45, 1 - airH / 320)
+  ctx.fillStyle = `rgba(0,0,0,${(0.18 * shScale).toFixed(3)})`
+  ctx.beginPath()
+  ctx.ellipse(x, groundY + 4, 14 * shScale, 4, 0, 0, Math.PI * 2)
+  ctx.fill()
   ctx.save()
   if (inv && Math.floor(timeSec * 12) % 2 === 0) ctx.globalAlpha = 0.35
-  // 影子
-  ctx.fillStyle = 'rgba(0,0,0,0.18)'
-  ctx.beginPath()
-  ctx.ellipse(x, groundY + 3, 13, 4, 0, 0, Math.PI * 2)
-  ctx.fill()
-  const runPhase = timeSec * (6 + r.speed * 1.4)
-  if (sliding) {
-    // 下滑：低身子往前蹲
-    ctx.fillStyle = color
-    roundRect(ctx, x - 14, feetY - 20, 28, 18, 8)
-    ctx.fill()
-    ctx.fillStyle = '#ffd9b3'
-    ctx.beginPath()
-    ctx.arc(x + 12, feetY - 18, 9, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.arc(x + 12, feetY - 20, 9, Math.PI, Math.PI * 2)
-    ctx.fill()
-  } else {
-    const swing = r.finished ? 0 : Math.sin(runPhase) * Math.min(7, 2 + r.speed * 0.35)
-    const air = isMe && r.y > 0
-    // 腿
-    ctx.strokeStyle = '#333'
-    ctx.lineWidth = 3
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    if (air) {
-      // 空中：双腿收起
-      ctx.moveTo(x - 3, feetY - 14)
-      ctx.lineTo(x - 8, feetY - 2)
-      ctx.moveTo(x + 3, feetY - 14)
-      ctx.lineTo(x + 8, feetY - 6)
-    } else {
-      ctx.moveTo(x - 3, feetY - 14)
-      ctx.lineTo(x - 3 + swing, feetY - 1)
-      ctx.moveTo(x + 3, feetY - 14)
-      ctx.lineTo(x + 3 - swing, feetY - 1)
-    }
-    ctx.stroke()
-    // 身体
-    ctx.fillStyle = color
-    roundRect(ctx, x - 10, feetY - 32, 20, 20, 8)
-    ctx.fill()
-    // 头
-    const bob = Math.sin(runPhase) * 1.5
-    ctx.fillStyle = '#ffd9b3'
-    ctx.beginPath()
-    ctx.arc(x, feetY - 40 + bob * 0.4, 11, 0, Math.PI * 2)
-    ctx.fill()
-    // 头发
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.arc(x, feetY - 42 + bob * 0.4, 11, Math.PI, Math.PI * 2)
-    ctx.fill()
-    // 眼睛
-    ctx.fillStyle = '#222'
-    ctx.beginPath()
-    ctx.arc(x + 4, feetY - 40 + bob * 0.4, 1.6, 0, Math.PI * 2)
-    ctx.fill()
+  ctx.translate(x, feetY)
+  // 压扁拉伸：起跳拉长，落地瞬间压扁
+  let sx = 1
+  let sy = 1
+  if (isMe && !sliding) {
+    if (r.vy > 200) { sx = 0.93; sy = 1.09 }
+    else if (r.vy < -200) { sx = 0.95; sy = 1.06 }
+    if (timeSec < fxSquashUntil) { sx = 1.2; sy = 0.8 }
   }
+  ctx.scale(sx, sy)
+  const runPhase = timeSec * (6 + r.speed * 1.4)
+  if (sliding) drawSlidePose(ctx, color, timeSec)
+  else drawRunPose(ctx, color, runPhase, r.finished, isMe && r.y > 0, timeSec)
+  ctx.restore()
   // 名字
   ctx.font = 'bold 12px sans-serif'
   ctx.textAlign = 'center'
@@ -963,7 +1249,195 @@ function drawRunner(ctx, r, toX, groundY, timeSec, W) {
     ctx.arc(x, feetY - h / 2, 24, 0, Math.PI * 2)
     ctx.stroke()
   }
+}
+
+// 卡通小人：奔跑循环（摆臂蹬腿）+ 红头带 + 坚定表情；空中是收腿姿势
+function drawRunPose(ctx, color, phase, finished, airborne, timeSec) {
+  const swing = finished ? 0 : Math.sin(phase)
+  const armSwing = finished ? 0 : Math.sin(phase + 0.7)
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  // —— 后腿 + 后脚 ——
+  ctx.strokeStyle = '#2b3a55'
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  if (airborne) {
+    ctx.moveTo(-2, -18)
+    ctx.lineTo(-9, -10)
+    ctx.lineTo(-14, -6)
+  } else {
+    ctx.moveTo(-2, -18)
+    ctx.lineTo(-2 - swing * 8, -9)
+    ctx.lineTo(-2 - swing * 12, -1)
+  }
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  if (airborne) ctx.ellipse(-15, -5, 6, 3.5, -0.3, 0, Math.PI * 2)
+  else ctx.ellipse(-2 - swing * 12 + 2, -2, 6, 3.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+  // —— 后臂（身体后面）——
+  ctx.strokeStyle = color
+  ctx.lineWidth = 4.5
+  ctx.beginPath()
+  ctx.moveTo(2, -33)
+  ctx.lineTo(2 - armSwing * 6, -26)
+  ctx.stroke()
+  ctx.strokeStyle = '#ffd9b3'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(2 - armSwing * 6, -26)
+  ctx.lineTo(2 - armSwing * 10, -20)
+  ctx.stroke()
+  // —— 身体：彩色运动衫 ——
+  ctx.fillStyle = color
+  roundRect(ctx, -9, -38, 19, 22, 7)
+  ctx.fill()
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'
+  roundRect(ctx, -9, -38, 19, 7, 7)
+  ctx.fill()
+  // 腰带
+  ctx.fillStyle = '#2b3a55'
+  ctx.fillRect(-9, -18, 19, 4)
+  // —— 前腿 + 前脚 ——
+  ctx.strokeStyle = '#33415e'
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  if (airborne) {
+    ctx.moveTo(2, -18)
+    ctx.lineTo(10, -12)
+    ctx.lineTo(8, -4)
+  } else {
+    ctx.moveTo(2, -18)
+    ctx.lineTo(2 + swing * 8, -9)
+    ctx.lineTo(2 + swing * 12, -1)
+  }
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  if (airborne) ctx.ellipse(9, -3, 6, 3.5, 0.3, 0, Math.PI * 2)
+  else ctx.ellipse(2 + swing * 12 + 2, -2, 6, 3.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+  // —— 前臂 ——
+  ctx.strokeStyle = color
+  ctx.lineWidth = 4.5
+  ctx.beginPath()
+  ctx.moveTo(4, -33)
+  ctx.lineTo(4 + armSwing * 6, -26)
+  ctx.stroke()
+  ctx.strokeStyle = '#ffd9b3'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(4 + armSwing * 6, -26)
+  ctx.lineTo(4 + armSwing * 10, -20)
+  ctx.stroke()
+  // —— 头 ——
+  const headX = 4
+  const headY = -46
+  ctx.fillStyle = '#ffd9b3'
+  ctx.beginPath()
+  ctx.arc(headX, headY, 10, 0, Math.PI * 2)
+  ctx.fill()
+  // 头发
+  ctx.fillStyle = '#5b3a29'
+  ctx.beginPath()
+  ctx.arc(headX, headY - 1, 10, Math.PI * 1.02, Math.PI * 1.98)
+  ctx.closePath()
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(headX - 6, headY - 9)
+  ctx.lineTo(headX - 2, headY - 14)
+  ctx.lineTo(headX + 1, headY - 9)
+  ctx.closePath()
+  ctx.fill()
+  // 红头带 + 飘带
+  ctx.strokeStyle = '#e23b3b'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.arc(headX, headY, 10, -2.7, -0.45)
+  ctx.stroke()
+  const flutter = Math.sin(timeSec * 10) * 2.5
+  ctx.strokeStyle = '#e23b3b'
+  ctx.lineWidth = 2.5
+  ctx.beginPath()
+  ctx.moveTo(headX - 9, headY - 3)
+  ctx.lineTo(headX - 17, headY - 6 + flutter)
+  ctx.moveTo(headX - 9, headY)
+  ctx.lineTo(headX - 16, headY + 3 - flutter)
+  ctx.stroke()
+  // 眼睛 + 坚定的眉毛 + 笑容
+  ctx.fillStyle = '#222222'
+  ctx.beginPath()
+  ctx.arc(headX + 4, headY - 1, 1.7, 0, Math.PI * 2)
+  ctx.arc(headX - 2, headY - 1, 1.5, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#5b3a29'
+  ctx.lineWidth = 1.6
+  ctx.beginPath()
+  ctx.moveTo(headX + 1, headY - 5.5)
+  ctx.lineTo(headX + 6, headY - 4.5)
+  ctx.moveTo(headX - 5, headY - 5.5)
+  ctx.lineTo(headX - 1, headY - 4.5)
+  ctx.stroke()
+  ctx.strokeStyle = '#c25e3a'
+  ctx.lineWidth = 1.8
+  ctx.beginPath()
+  ctx.arc(headX + 4, headY + 3, 3.5, Math.PI * 0.15, Math.PI * 0.85)
+  ctx.stroke()
+}
+
+// 下滑姿势：低身前蹲，双腿前伸
+function drawSlidePose(ctx, color, timeSec) {
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  // 双腿前伸
+  ctx.strokeStyle = '#2b3a55'
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  ctx.moveTo(-6, -10)
+  ctx.lineTo(14, -3)
+  ctx.moveTo(-4, -8)
+  ctx.lineTo(17, -2)
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.ellipse(16, -3, 6, 3.5, 0.2, 0, Math.PI * 2)
+  ctx.ellipse(19, -2, 6, 3.5, 0.2, 0, Math.PI * 2)
+  ctx.fill()
+  // 身体前倾
+  ctx.fillStyle = color
+  ctx.save()
+  ctx.translate(-2, -13)
+  ctx.rotate(-0.18)
+  roundRect(ctx, -15, -7, 30, 13, 6)
+  ctx.fill()
   ctx.restore()
+  // 后撑的手
+  ctx.strokeStyle = '#ffd9b3'
+  ctx.lineWidth = 4
+  ctx.beginPath()
+  ctx.moveTo(-8, -10)
+  ctx.lineTo(-16, -4)
+  ctx.stroke()
+  // 头
+  ctx.fillStyle = '#ffd9b3'
+  ctx.beginPath()
+  ctx.arc(13, -19, 9, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#5b3a29'
+  ctx.beginPath()
+  ctx.arc(13, -20, 9, Math.PI * 1.02, Math.PI * 1.98)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#e23b3b'
+  ctx.lineWidth = 3.5
+  ctx.beginPath()
+  ctx.arc(13, -19, 9, -2.7, -0.45)
+  ctx.stroke()
+  ctx.fillStyle = '#222222'
+  ctx.beginPath()
+  ctx.arc(16, -20, 1.6, 0, Math.PI * 2)
+  ctx.fill()
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -975,6 +1449,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r)
   ctx.closePath()
 }
+
 
 onMounted(() => {
   userStore.refreshUserInfo()
@@ -1024,8 +1499,8 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 .exit-btn {
-  position: absolute;
-  top: 12px;
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   right: 12px;
   width: 36px;
   height: 36px;
@@ -1036,6 +1511,7 @@ onUnmounted(() => {
   font-size: 16px;
   cursor: pointer;
   flex-shrink: 0;
+  z-index: 50;
 }
 .race-logo {
   font-size: 64px;
@@ -1127,6 +1603,8 @@ onUnmounted(() => {
 }
 .race-progress {
   flex-shrink: 0;
+  padding-right: 48px;
+  box-sizing: border-box;
 }
 .progress-track {
   position: relative;

@@ -174,8 +174,8 @@
                   <el-dropdown-item command="race">
                     <span>🏃 {{ $t('cmfly') }}</span>
                   </el-dropdown-item>
-                  <el-dropdown-item command="dance">
-                    <span>💃 {{ $t('dance') }}</span>
+                  <el-dropdown-item command="piano">
+                    <span>🎹 {{ $t('piano') }}</span>
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -382,7 +382,7 @@ function replySenderName(replyTo) {
 }
 
 // 消息里的链接点得开：把文本按 URL 切成一段段，链接渲染成 <a>；
-// 本站的游戏邀请链接（/race?code=、/dance?code=）直接在应用内跳过去，其它链接新窗口打开
+// 本站的游戏邀请链接（/race?code=、/piano?code=）直接在应用内跳过去，其它链接新窗口打开
 const LINK_RE = /(https?:\/\/[^\s]+)/g
 const LINK_TRAIL = '.,!?:;。，、；：！？）)]'
 function linkSegments(text) {
@@ -407,7 +407,7 @@ function linkSegments(text) {
 function onMessageLink(url) {
   try {
     const u = new URL(url)
-    if (u.origin === location.origin && (u.pathname === '/race' || u.pathname === '/dance')) {
+    if (u.origin === location.origin && (u.pathname === '/race' || u.pathname === '/piano' || u.pathname === '/dance')) {
       router.push(u.pathname + u.search)
       return
     }

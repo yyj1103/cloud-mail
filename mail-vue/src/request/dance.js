@@ -1,8 +1,9 @@
 import http from '@/axios/index.js'
 
-// 冰面炫舞：建房、进房、查房、开跳、上报分数、离房
-export function createDance(name) {
-    return http.post('/dance/create', {name})
+// 节奏对战（钢琴对战）：建房、进房、查房、开局、上报分数、离房
+// 建房时带上选的曲子 song（twinkle/ode/tiger/jingle），房间里的人都弹同一首
+export function createDance(name, song) {
+    return http.post('/dance/create', {name, song})
 }
 
 export function joinDance(code, name) {

@@ -17,9 +17,9 @@
             <Icon icon="solar:chat-line-bold" width="16" height="16" />
             <span>{{ $t('startDm') }}</span>
           </el-dropdown-item>
-          <el-dropdown-item command="dance">
+          <el-dropdown-item command="piano">
             <Icon icon="mdi:music" width="16" height="16" />
-            <span>{{ $t('dance') }}</span>
+            <span>{{ $t('piano') }}</span>
           </el-dropdown-item>
         </el-dropdown-menu>
       </template>
@@ -101,8 +101,8 @@ function handleFabCommand(cmd) {
     uiStore.writerRef?.open()
   } else if (cmd === 'dm') {
     goDm()
-  } else if (cmd === 'dance') {
-    router.push({ name: 'dance' })
+  } else if (cmd === 'piano') {
+    router.push({ name: 'piano' })
   }
 }
 </script>
