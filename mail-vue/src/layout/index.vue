@@ -1,5 +1,5 @@
 <template>
-  <!-- 全屏游戏（酷跑对战 / 冰面炫舞）：只显示游戏界面，不显示顶栏、侧栏、底部导航、页脚 -->
+  <!-- 全屏游戏（酷跑对战 / 钢琴对战 / 钢铁黎明）：只显示游戏界面，不显示顶栏、侧栏、底部导航、页脚 -->
   <div v-if="isFullscreen" class="fullscreen-view">
     <router-view />
   </div>
